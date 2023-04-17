@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -151,6 +152,7 @@
         <module>plugin/trino-hudi</module>
         <module>plugin/trino-iceberg</module>
         <module>plugin/trino-ignite</module>
+        <module>plugin/trino-influxdb</module>
         <module>plugin/trino-jmx</module>
         <module>plugin/trino-kafka</module>
         <module>plugin/trino-kinesis</module>
@@ -401,6 +403,12 @@
             <dependency>
                 <groupId>io.trino</groupId>
                 <artifactId>trino-ignite</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.trino</groupId>
+                <artifactId>trino-influxdb</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -1403,10 +1411,10 @@
             </dependency>
 
             <dependency>
-                 <groupId>commons-codec</groupId>
-                 <artifactId>commons-codec</artifactId>
-                 <version>1.15</version>
-             </dependency>
+                <groupId>commons-codec</groupId>
+                <artifactId>commons-codec</artifactId>
+                <version>1.15</version>
+            </dependency>
 
             <dependency>
                 <groupId>dev.failsafe</groupId>
@@ -2101,30 +2109,69 @@
                         </exclusionPatterns>
                         <exclusions>
                             <!-- getOnlyElement is more readable than the stream analogue -->
-                            <exclusion>com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;)Ljava/lang/Object;</exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;)Ljava/lang/Object;
+                            </exclusion>
                             <!-- getLast has lower complexity for array based lists than the stream analogue (O(1) vs O(log(N)) -->
-                            <exclusion>com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;)Ljava/lang/Object;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;</exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;)Ljava/lang/Object;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;
+                            </exclusion>
                             <!-- TODO: requires getting to common understanding which of those we want to enable -->
-                            <exclusion>com/google/common/collect/Iterables.transform:(Ljava/lang/Iterable;Lcom/google/common/base/Function;)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Lists.transform:(Ljava/util/List;Lcom/google/common/base/Function;)Ljava/util/List;</exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.transform:(Ljava/lang/Iterable;Lcom/google/common/base/Function;)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Lists.transform:(Ljava/util/List;Lcom/google/common/base/Function;)Ljava/util/List;
+                            </exclusion>
                             <exclusion>com/google/common/collect/Iterables.isEmpty:(Ljava/lang/Iterable;)Z</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.all:(Ljava/lang/Iterable;Lcom/google/common/base/Predicate;)Z</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.any:(Ljava/lang/Iterable;Lcom/google/common/base/Predicate;)Z</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.skip:(Ljava/lang/Iterable;I)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.limit:(Ljava/lang/Iterable;I)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.get:(Ljava/lang/Iterable;I)Ljava/lang/Object;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.getFirst:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;)Ljava/lang/Object;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.cycle:(Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.cycle:([Ljava/lang/Object;)Ljava/lang/Iterable;</exclusion>
-                            <exclusion>com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;</exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.all:(Ljava/lang/Iterable;Lcom/google/common/base/Predicate;)Z
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.any:(Ljava/lang/Iterable;Lcom/google/common/base/Predicate;)Z
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.skip:(Ljava/lang/Iterable;I)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.limit:(Ljava/lang/Iterable;I)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.get:(Ljava/lang/Iterable;I)Ljava/lang/Object;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.getFirst:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;)Ljava/lang/Object;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.cycle:(Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.cycle:([Ljava/lang/Object;)Ljava/lang/Iterable;
+                            </exclusion>
+                            <exclusion>
+                                com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;
+                            </exclusion>
                             <!-- com.google.common.io.BaseEncoding.base64 provides more reach interfaces than java.util.Base64 -->
-                            <exclusion>com/google/common/io/BaseEncoding.base64:()Lcom/google/common/io/BaseEncoding;</exclusion>
+                            <exclusion>com/google/common/io/BaseEncoding.base64:()Lcom/google/common/io/BaseEncoding;
+                            </exclusion>
                         </exclusions>
                     </configuration>
                 </plugin>
@@ -2135,13 +2182,18 @@
                     <configuration>
                         <rules>
                             <compound implementation="com.github.ferstl.maven.pomenforcers.CompoundPedanticEnforcer">
-                                <enforcers>POM_SECTION_ORDER,MODULE_ORDER,DEPENDENCY_MANAGEMENT_ORDER,DEPENDENCY_ORDER,DEPENDENCY_ELEMENT</enforcers>
-                                <pomSectionPriorities>modelVersion,parent,groupId,artifactId,version,name,description,packaging,url,inceptionYear,licenses,scm,properties,modules</pomSectionPriorities>
+                                <enforcers>
+                                    POM_SECTION_ORDER,MODULE_ORDER,DEPENDENCY_MANAGEMENT_ORDER,DEPENDENCY_ORDER,DEPENDENCY_ELEMENT
+                                </enforcers>
+                                <pomSectionPriorities>
+                                    modelVersion,parent,groupId,artifactId,version,name,description,packaging,url,inceptionYear,licenses,scm,properties,modules
+                                </pomSectionPriorities>
                                 <dependenciesGroupIdPriorities>io.trino,io.airlift</dependenciesGroupIdPriorities>
                                 <dependenciesOrderBy>scope,groupId,artifactId</dependenciesOrderBy>
                                 <dependenciesScopePriorities>compile,runtime,provided,test</dependenciesScopePriorities>
                                 <dependencyManagementOrderBy>groupId,artifactId</dependencyManagementOrderBy>
-                                <dependencyManagementGroupIdPriorities>io.trino,io.airlift</dependencyManagementGroupIdPriorities>
+                                <dependencyManagementGroupIdPriorities>io.trino,io.airlift
+                                </dependencyManagementGroupIdPriorities>
                                 <dependencyElementOrdering>groupId,artifactId,type,version</dependencyElementOrdering>
                             </compound>
                             <requireUpperBoundDeps>
@@ -2272,70 +2324,80 @@
                             <DynamicDependency>
                                 <groupId>org.junit.jupiter</groupId>
                                 <artifactId>junit-jupiter-engine</artifactId>
-                                <version>5.3.2</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>5.3.2
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>org.junit.jupiter</groupId>
                                 <artifactId>junit-jupiter-params</artifactId>
-                                <version>5.3.2</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>5.3.2
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>org.mockito</groupId>
                                 <artifactId>mockito-core</artifactId>
-                                <version>2.28.2</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>2.28.2
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>org.powermock</groupId>
                                 <artifactId>powermock-reflect</artifactId>
-                                <version>2.0.5</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>2.0.5
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>junit</groupId>
                                 <artifactId>junit</artifactId>
-                                <version>4.13</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>4.13
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>org.testng</groupId>
                                 <artifactId>testng</artifactId>
-                                <version>5.10</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>5.10
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>org.assertj</groupId>
                                 <artifactId>assertj-core</artifactId>
-                                <version>3.9.1</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>3.9.1
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>org.hamcrest</groupId>
                                 <artifactId>hamcrest-library</artifactId>
-                                <version>1.3</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>1.3
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>org.easytesting</groupId>
                                 <artifactId>fest-assert</artifactId>
-                                <version>1.4</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>1.4
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>pom</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
                             <DynamicDependency>
                                 <groupId>org.apache.maven.surefire</groupId>
                                 <artifactId>surefire-testng</artifactId>
-                                <version>2.22.2</version> <!-- legacy version which Surefire seems to need for some reason -->
+                                <version>2.22.2
+                                </version> <!-- legacy version which Surefire seems to need for some reason -->
                                 <type>jar</type>
                                 <repositoryType>MAIN</repositoryType>
                             </DynamicDependency>
@@ -2414,20 +2476,24 @@
                                     -Xep:FallThrough:ERROR \
                                     -Xep:GuardedBy:OFF <!-- needs some careful inspection --> \
                                     -Xep:HidingField:ERROR \
-                                    -Xep:ImmutableEnumChecker:OFF <!-- flags enums with List fields even if initialized with ImmutableList, and other false positives --> \
+                                    -Xep:ImmutableEnumChecker:OFF <!-- flags enums with List fields even if initialized with ImmutableList, and other false positives -->
+                                    \
                                     -Xep:ImmutableSetForContains:ERROR \
-                                    -Xep:InconsistentCapitalization:ERROR <!-- fields/variables should not differ only in case --> \
+                                    -Xep:InconsistentCapitalization:ERROR <!-- fields/variables should not differ only in case -->
+                                    \
                                     -Xep:InconsistentHashCode:ERROR \
                                     -Xep:InjectOnConstructorOfAbstractClass:ERROR \
                                     -Xep:MissingCasesInEnumSwitch:ERROR \
                                     -Xep:MissingOverride:ERROR \
-                                    -Xep:MissingSummary:OFF <!-- Sometimes our javadoc contains just a @see directive --> \
+                                    -Xep:MissingSummary:OFF <!-- Sometimes our javadoc contains just a @see directive -->
+                                    \
                                     -Xep:MutablePublicArray:ERROR \
                                     -Xep:NullOptional:ERROR \
                                     -Xep:ObjectToString:ERROR \
                                     -Xep:OptionalNotPresent:ERROR \
                                     -Xep:Overrides:ERROR \
-                                    -Xep:PreferredInterfaceType:OFF <!-- flags List fields even if initialized with ImmutableList --> \
+                                    -Xep:PreferredInterfaceType:OFF <!-- flags List fields even if initialized with ImmutableList -->
+                                    \
                                     -Xep:PrimitiveArrayPassedToVarargsMethod:ERROR \
                                     -Xep:StreamResourceLeak:ERROR \
                                     -Xep:UnnecessaryLambda:OFF <!-- we deliberately use it in a couple of places --> \
@@ -2491,7 +2557,8 @@
                             <buildUpstreamMode>impacted</buildUpstreamMode>
                             <!-- Skip tests and checks for upstream modules since they have not been modified but are still required to be built -->
                             <skipTestsForUpstreamModules>true</skipTestsForUpstreamModules>
-                            <argsForUpstreamModules>-Dmaven.source.skip=true -Dair.check.skip-all</argsForUpstreamModules>
+                            <argsForUpstreamModules>-Dmaven.source.skip=true -Dair.check.skip-all
+                            </argsForUpstreamModules>
                             <!-- Any modules selected with -pl will be built fully (with tests etc.) if the selected module itself is changed
                             or one of its (non-selected) upstream modules -->
                             <disableSelectedProjectsHandling>true</disableSelectedProjectsHandling>
