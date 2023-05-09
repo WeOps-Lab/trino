@@ -11,31 +11,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-FROM eclipse-temurin:17-jdk AS builder
+FROM eclipse-temurin:17.0.6_10-jdk-focal AS builder
 
-RUN \
-    set -xeu && \
-    echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
-    echo 'Acquire::http::Timeout "15";' > /etc/apt/apt.conf.d/80-timeouts && \
-    apt-get update -q && \
-    apt-get install -y -q git gcc make && \
-    git clone https://github.com/airlift/jvmkill /tmp/jvmkill && \
-    make -C /tmp/jvmkill
+RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN sed -i s@/security.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN apt-get update
+RUN apt-get install -y git gcc make
+RUN git clone https://github.com/airlift/jvmkill /tmp/jvmkill
+RUN make -C /tmp/jvmkill
 
-FROM eclipse-temurin:17-jdk
+FROM eclipse-temurin:17.0.6_10-jdk-focal
 
-RUN \
-    set -xeu && \
-    echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
-    echo 'Acquire::http::Timeout "15";' > /etc/apt/apt.conf.d/80-timeouts && \
-    apt-get update -q && \
-    apt-get install -y -q less python3 curl && \
-    rm -rf /var/lib/apt/lists/* && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3 1 && \
-    groupadd trino --gid 1000 && \
-    useradd trino --uid 1000 --gid 1000 --create-home && \
-    mkdir -p /usr/lib/trino /data/trino && \
-    chown -R "trino:trino" /usr/lib/trino /data/trino
+RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN sed -i s@/security.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN apt-get update
+RUN apt-get install -y less python3 curl
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+RUN groupadd trino --gid 1000
+RUN useradd trino --uid 1000 --gid 1000 --create-home
+RUN mkdir -p /usr/lib/trino /data/trino
+RUN chown -R "trino:trino" /usr/lib/trino /data/trino
 
 ARG TRINO_VERSION
 COPY trino-cli-${TRINO_VERSION}-executable.jar /usr/bin/trino

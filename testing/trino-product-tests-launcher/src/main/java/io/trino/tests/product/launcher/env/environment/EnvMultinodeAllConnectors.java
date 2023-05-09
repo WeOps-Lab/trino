@@ -31,20 +31,17 @@ import static org.testcontainers.utility.MountableFile.forHostPath;
 
 @TestsEnvironment
 public final class EnvMultinodeAllConnectors
-        extends EnvironmentProvider
-{
+        extends EnvironmentProvider {
     private final ResourceProvider configDir;
 
     @Inject
-    public EnvMultinodeAllConnectors(StandardMultinode standardMultinode, DockerFiles dockerFiles)
-    {
+    public EnvMultinodeAllConnectors(StandardMultinode standardMultinode, DockerFiles dockerFiles) {
         super(standardMultinode);
         this.configDir = dockerFiles.getDockerFilesHostDirectory("conf/environment/multinode-all/");
     }
 
     @Override
-    public void extendEnvironment(Environment.Builder builder)
-    {
+    public void extendEnvironment(Environment.Builder builder) {
         // blackhole, jmx, tpch are already configured in Standard base env
         List.of(
                         // TODO accumulo needs to connect to ZooKeeper, it won't start otherwise
@@ -61,6 +58,7 @@ public final class EnvMultinodeAllConnectors
                         "hudi",
                         "iceberg",
                         "ignite",
+                        "influxdb",
                         "kafka",
                         "kinesis",
                         "kudu",

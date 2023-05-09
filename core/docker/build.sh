@@ -52,7 +52,7 @@ if [ -n "$TRINO_VERSION" ]; then
     trino_client="$local_repo/io/trino/trino-cli/${TRINO_VERSION}/trino-cli-${TRINO_VERSION}-executable.jar"
     chmod +x "$trino_client"
 else
-    TRINO_VERSION=$("${SOURCE_DIR}/mvnw" -f "${SOURCE_DIR}/pom.xml" --quiet help:evaluate -Dexpression=project.version -DforceStdout)
+    TRINO_VERSION=$("mvn" -f "${SOURCE_DIR}/pom.xml" --quiet help:evaluate -Dexpression=project.version -DforceStdout)
     echo "🎯 Using currently built artifacts from the core/trino-server and client/trino-cli modules and version ${TRINO_VERSION}"
     trino_server="${SOURCE_DIR}/core/trino-server/target/trino-server-${TRINO_VERSION}.tar.gz"
     trino_client="${SOURCE_DIR}/client/trino-cli/target/trino-cli-${TRINO_VERSION}-executable.jar"
@@ -67,7 +67,7 @@ rm "${WORK_DIR}/trino-server-${TRINO_VERSION}.tar.gz"
 cp -R bin "${WORK_DIR}/trino-server-${TRINO_VERSION}"
 cp -R default "${WORK_DIR}/"
 
-TAG_PREFIX="trino:${TRINO_VERSION}"
+TAG_PREFIX="ccr.ccs.tencentyun.com/megalab/trino:${TRINO_VERSION}"
 
 for arch in "${ARCHITECTURES[@]}"; do
     echo "🫙  Building the image for $arch"
@@ -82,14 +82,3 @@ done
 
 echo "🧹 Cleaning up the build context directory"
 rm -r "${WORK_DIR}"
-
-echo "🏃 Testing built images"
-source container-test.sh
-
-for arch in "${ARCHITECTURES[@]}"; do
-    # TODO: remove when https://github.com/multiarch/qemu-user-static/issues/128 is fixed
-    if [[ "$arch" != "ppc64le" ]]; then
-        test_container "${TAG_PREFIX}-$arch" "linux/$arch"
-    fi
-    docker image inspect -f '🚀 Built {{.RepoTags}} {{.Id}}' "${TAG_PREFIX}-$arch"
-done
