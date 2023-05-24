@@ -104,8 +104,7 @@ import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.elasticsearch.action.search.SearchType.QUERY_THEN_FETCH;
 
-public class ElasticsearchClient
-{
+public class ElasticsearchClient {
     private static final Logger LOG = Logger.get(ElasticsearchClient.class);
 
     private static final JsonCodec<SearchShardsResponse> SEARCH_SHARDS_RESPONSE_CODEC = jsonCodec(SearchShardsResponse.class);
@@ -136,8 +135,7 @@ public class ElasticsearchClient
     public ElasticsearchClient(
             ElasticsearchConfig config,
             Optional<AwsSecurityConfig> awsSecurityConfig,
-            Optional<PasswordConfig> passwordConfig)
-    {
+            Optional<PasswordConfig> passwordConfig) {
         client = createClient(config, awsSecurityConfig, passwordConfig, backpressureStats);
 
         this.ignorePublishAddress = config.isIgnorePublishAddress();
@@ -148,8 +146,7 @@ public class ElasticsearchClient
     }
 
     @PostConstruct
-    public void initialize()
-    {
+    public void initialize() {
         if (!started.getAndSet(true)) {
             // do the first refresh eagerly
             refreshNodes();
@@ -160,14 +157,12 @@ public class ElasticsearchClient
 
     @PreDestroy
     public void close()
-            throws IOException
-    {
+            throws IOException {
         executor.shutdownNow();
         client.close();
     }
 
-    private void refreshNodes()
-    {
+    private void refreshNodes() {
         // discover other nodes in the cluster and add them to the client
         try {
             Set<ElasticsearchNode> nodes = fetchNodes();
@@ -184,8 +179,7 @@ public class ElasticsearchClient
             }
 
             this.nodes.set(nodes);
-        }
-        catch (Throwable e) {
+        } catch (Throwable e) {
             // Catch all exceptions here since throwing an exception from executor#scheduleWithFixedDelay method
             // suppresses all future scheduled invocations
             LOG.error(e, "Error refreshing nodes");
@@ -196,12 +190,11 @@ public class ElasticsearchClient
             ElasticsearchConfig config,
             Optional<AwsSecurityConfig> awsSecurityConfig,
             Optional<PasswordConfig> passwordConfig,
-            TimeStat backpressureStats)
-    {
+            TimeStat backpressureStats) {
         RestClientBuilder builder = RestClient.builder(
-                config.getHosts().stream()
-                        .map(httpHost -> new HttpHost(httpHost, config.getPort(), config.isTlsEnabled() ? "https" : "http"))
-                        .toArray(HttpHost[]::new))
+                        config.getHosts().stream()
+                                .map(httpHost -> new HttpHost(httpHost, config.getPort(), config.isTlsEnabled() ? "https" : "http"))
+                                .toArray(HttpHost[]::new))
                 .setMaxRetryTimeoutMillis(toIntExact(config.getMaxRetryTime().toMillis()));
 
         builder.setHttpClientConfigCallback(ignored -> {
@@ -246,8 +239,7 @@ public class ElasticsearchClient
         return new BackpressureRestHighLevelClient(builder, config, backpressureStats);
     }
 
-    private static AWSCredentialsProvider getAwsCredentialsProvider(AwsSecurityConfig config)
-    {
+    private static AWSCredentialsProvider getAwsCredentialsProvider(AwsSecurityConfig config) {
         AWSCredentialsProvider credentialsProvider = DefaultAWSCredentialsProviderChain.getInstance();
 
         if (config.getAccessKey().isPresent() && config.getSecretKey().isPresent()) {
@@ -273,22 +265,19 @@ public class ElasticsearchClient
             Optional<File> keyStorePath,
             Optional<String> keyStorePassword,
             Optional<File> trustStorePath,
-            Optional<String> trustStorePassword)
-    {
+            Optional<String> trustStorePassword) {
         if (keyStorePath.isEmpty() && trustStorePath.isEmpty()) {
             return Optional.empty();
         }
 
         try {
             return Optional.of(createSSLContext(keyStorePath, keyStorePassword, trustStorePath, trustStorePassword));
-        }
-        catch (GeneralSecurityException | IOException e) {
+        } catch (GeneralSecurityException | IOException e) {
             throw new TrinoException(ELASTICSEARCH_SSL_INITIALIZATION_FAILURE, e);
         }
     }
 
-    private Set<ElasticsearchNode> fetchNodes()
-    {
+    private Set<ElasticsearchNode> fetchNodes() {
         NodesResponse nodesResponse = doRequest("/_nodes/http", NODES_RESPONSE_CODEC::fromJson);
 
         ImmutableSet.Builder<ElasticsearchNode> result = ImmutableSet.builder();
@@ -307,13 +296,11 @@ public class ElasticsearchClient
         return result.build();
     }
 
-    public Set<ElasticsearchNode> getNodes()
-    {
+    public Set<ElasticsearchNode> getNodes() {
         return nodes.get();
     }
 
-    public List<Shard> getSearchShards(String index)
-    {
+    public List<Shard> getSearchShards(String index) {
         Map<String, ElasticsearchNode> nodeById = getNodes().stream()
                 .collect(toImmutableMap(ElasticsearchNode::getId, Function.identity()));
 
@@ -335,8 +322,7 @@ public class ElasticsearchClient
                         .min(this::shardPreference)
                         .get();
                 node = nodes.get(chosen.getShard() % nodes.size());
-            }
-            else {
+            } else {
                 chosen = candidate.get();
                 node = nodeById.get(chosen.getNode());
             }
@@ -347,8 +333,7 @@ public class ElasticsearchClient
         return shards.build();
     }
 
-    private int shardPreference(SearchShardsResponse.Shard left, SearchShardsResponse.Shard right)
-    {
+    private int shardPreference(SearchShardsResponse.Shard left, SearchShardsResponse.Shard right) {
         // Favor non-primary shards
         if (left.isPrimary() == right.isPrimary()) {
             return 0;
@@ -357,8 +342,7 @@ public class ElasticsearchClient
         return left.isPrimary() ? 1 : -1;
     }
 
-    public boolean indexExists(String index)
-    {
+    public boolean indexExists(String index) {
         String path = format("/%s/_mappings", index);
 
         try {
@@ -366,20 +350,17 @@ public class ElasticsearchClient
                     .performRequest("GET", path);
 
             return response.getStatusLine().getStatusCode() == 200;
-        }
-        catch (ResponseException e) {
+        } catch (ResponseException e) {
             if (e.getResponse().getStatusLine().getStatusCode() == 404) {
                 return false;
             }
             throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
         }
     }
 
-    public List<String> getIndexes()
-    {
+    public List<String> getIndexes() {
         return doRequest("/_cat/indices?h=index,docs.count,docs.deleted&format=json&s=index:asc", body -> {
             try {
                 ImmutableList.Builder<String> result = ImmutableList.builder();
@@ -398,15 +379,13 @@ public class ElasticsearchClient
                     result.add(index);
                 }
                 return result.build();
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 throw new TrinoException(ELASTICSEARCH_INVALID_RESPONSE, e);
             }
         });
     }
 
-    public Map<String, List<String>> getAliases()
-    {
+    public Map<String, List<String>> getAliases() {
         return doRequest("/_aliases", body -> {
             try {
                 ImmutableMap.Builder<String, List<String>> result = ImmutableMap.builder();
@@ -422,15 +401,13 @@ public class ElasticsearchClient
                     }
                 }
                 return result.buildOrThrow();
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 throw new TrinoException(ELASTICSEARCH_INVALID_RESPONSE, e);
             }
         });
     }
 
-    public IndexMetadata getIndexMetadata(String index)
-    {
+    public IndexMetadata getIndexMetadata(String index) {
         String path = format("/%s/_mappings", index);
 
         return doRequest(path, body -> {
@@ -463,15 +440,13 @@ public class ElasticsearchClient
                 }
 
                 return new IndexMetadata(parseType(mappings.get("properties"), metaProperties));
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 throw new TrinoException(ELASTICSEARCH_INVALID_RESPONSE, e);
             }
         });
     }
 
-    private IndexMetadata.ObjectType parseType(JsonNode properties, JsonNode metaProperties)
-    {
+    private IndexMetadata.ObjectType parseType(JsonNode properties, JsonNode metaProperties) {
         Iterator<Map.Entry<String, JsonNode>> entries = properties.fields();
 
         ImmutableList.Builder<IndexMetadata.Field> result = ImmutableList.builder();
@@ -513,8 +488,7 @@ public class ElasticsearchClient
                 case "object":
                     if (value.has("properties")) {
                         result.add(new IndexMetadata.Field(asRawJson, isArray, name, parseType(value.get("properties"), metaNode)));
-                    }
-                    else {
+                    } else {
                         LOG.debug("Ignoring empty object field: %s", name);
                     }
                     break;
@@ -527,16 +501,14 @@ public class ElasticsearchClient
         return new IndexMetadata.ObjectType(result.build());
     }
 
-    private JsonNode nullSafeNode(JsonNode jsonNode, String name)
-    {
+    private JsonNode nullSafeNode(JsonNode jsonNode, String name) {
         if (jsonNode == null || jsonNode.isNull() || jsonNode.get(name) == null) {
             return NullNode.getInstance();
         }
         return jsonNode.get(name);
     }
 
-    public String executeQuery(String index, String query)
-    {
+    public String executeQuery(String index, String query) {
         String path = format("/%s/_search", index);
 
         Response response;
@@ -549,32 +521,28 @@ public class ElasticsearchClient
                             new ByteArrayEntity(query.getBytes(UTF_8)),
                             new BasicHeader("Content-Type", "application/json"),
                             new BasicHeader("Accept-Encoding", "application/json"));
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
         }
 
         String body;
         try {
             body = EntityUtils.toString(response.getEntity());
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new TrinoException(ELASTICSEARCH_INVALID_RESPONSE, e);
         }
 
         return body;
     }
 
-    public SearchResponse beginSearch(String index, int shard, QueryBuilder query, Optional<List<String>> fields, List<String> documentFields, Optional<String> sort, OptionalLong limit)
-    {
+    public SearchResponse beginSearch(String index, int shard, QueryBuilder query, Optional<List<String>> fields, List<String> documentFields, Optional<String> sort, OptionalLong limit) {
         SearchSourceBuilder sourceBuilder = SearchSourceBuilder.searchSource()
                 .query(query);
 
         if (limit.isPresent() && limit.getAsLong() < scrollSize) {
             // Safe to cast it to int because scrollSize is int.
             sourceBuilder.size(toIntExact(limit.getAsLong()));
-        }
-        else {
+        } else {
             sourceBuilder.size(scrollSize);
         }
 
@@ -583,8 +551,7 @@ public class ElasticsearchClient
         fields.ifPresent(values -> {
             if (values.isEmpty()) {
                 sourceBuilder.fetchSource(false);
-            }
-            else {
+            } else {
                 sourceBuilder.fetchSource(values.toArray(new String[0]), null);
             }
         });
@@ -601,11 +568,9 @@ public class ElasticsearchClient
         long start = System.nanoTime();
         try {
             return client.search(request);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
-        }
-        catch (ElasticsearchStatusException e) {
+        } catch (ElasticsearchStatusException e) {
             Throwable[] suppressed = e.getSuppressed();
             if (suppressed.length > 0) {
                 Throwable cause = suppressed[0];
@@ -615,14 +580,12 @@ public class ElasticsearchClient
             }
 
             throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
-        }
-        finally {
+        } finally {
             searchStats.add(Duration.nanosSince(start));
         }
     }
 
-    public SearchResponse nextPage(String scrollId)
-    {
+    public SearchResponse nextPage(String scrollId) {
         LOG.debug("Next page: %s", scrollId);
 
         SearchScrollRequest request = new SearchScrollRequest(scrollId)
@@ -631,17 +594,14 @@ public class ElasticsearchClient
         long start = System.nanoTime();
         try {
             return client.searchScroll(request);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
-        }
-        finally {
+        } finally {
             nextPageStats.add(Duration.nanosSince(start));
         }
     }
 
-    public long count(String index, int shard, QueryBuilder query)
-    {
+    public long count(String index, int shard, QueryBuilder query) {
         SearchSourceBuilder sourceBuilder = SearchSourceBuilder.searchSource()
                 .query(query);
 
@@ -658,93 +618,79 @@ public class ElasticsearchClient
                                 ImmutableMap.of(),
                                 new StringEntity(sourceBuilder.toString()),
                                 new BasicHeader("Content-Type", "application/json"));
-            }
-            catch (ResponseException e) {
+            } catch (ResponseException e) {
                 throw propagate(e);
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
             }
 
             try {
                 return COUNT_RESPONSE_CODEC.fromJson(EntityUtils.toByteArray(response.getEntity()))
                         .getCount();
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 throw new TrinoException(ELASTICSEARCH_INVALID_RESPONSE, e);
             }
-        }
-        finally {
+        } finally {
             countStats.add(Duration.nanosSince(start));
         }
     }
 
-    public void clearScroll(String scrollId)
-    {
+    public void clearScroll(String scrollId) {
         ClearScrollRequest request = new ClearScrollRequest();
         request.addScrollId(scrollId);
         try {
             client.clearScroll(request);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
         }
     }
 
     @Managed
     @Nested
-    public TimeStat getSearchStats()
-    {
+    public TimeStat getSearchStats() {
         return searchStats;
     }
 
     @Managed
     @Nested
-    public TimeStat getNextPageStats()
-    {
+    public TimeStat getNextPageStats() {
         return nextPageStats;
     }
 
     @Managed
     @Nested
-    public TimeStat getCountStats()
-    {
+    public TimeStat getCountStats() {
         return countStats;
     }
 
     @Managed
     @Nested
-    public TimeStat getBackpressureStats()
-    {
+    public TimeStat getBackpressureStats() {
         return backpressureStats;
     }
 
-    private <T> T doRequest(String path, ResponseHandler<T> handler)
-    {
+    private <T> T doRequest(String path, ResponseHandler<T> handler) {
         checkArgument(path.startsWith("/"), "path must be an absolute path");
 
         Response response;
         try {
             response = client.getLowLevelClient()
                     .performRequest("GET", path);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new TrinoException(ELASTICSEARCH_CONNECTION_ERROR, e);
         }
 
         String body;
         try {
             body = EntityUtils.toString(response.getEntity());
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw new TrinoException(ELASTICSEARCH_INVALID_RESPONSE, e);
         }
 
         return handler.process(body);
     }
 
-    private static TrinoException propagate(ResponseException exception)
-    {
+    private static TrinoException propagate(ResponseException exception) {
         HttpEntity entity = exception.getResponse().getEntity();
 
         if (entity != null && entity.getContentType() != null) {
@@ -757,8 +703,7 @@ public class ElasticsearchClient
                 if (!reason.isMissingNode()) {
                     throw new TrinoException(ELASTICSEARCH_QUERY_FAILURE, reason.asText(), exception);
                 }
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 TrinoException result = new TrinoException(ELASTICSEARCH_QUERY_FAILURE, exception);
                 result.addSuppressed(e);
                 throw result;
@@ -769,8 +714,7 @@ public class ElasticsearchClient
     }
 
     @VisibleForTesting
-    static Optional<String> extractAddress(String address)
-    {
+    static Optional<String> extractAddress(String address) {
         Matcher matcher = ADDRESS_PATTERN.matcher(address);
 
         if (!matcher.matches()) {
@@ -788,8 +732,7 @@ public class ElasticsearchClient
         return Optional.of(ip + ":" + port);
     }
 
-    private interface ResponseHandler<T>
-    {
+    private interface ResponseHandler<T> {
         T process(String body);
     }
 }

@@ -15,15 +15,17 @@ package io.trino.plugin.elasticsearch.decoders;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.primitives.Longs;
+import com.google.common.collect.ImmutableList;
 import io.trino.plugin.elasticsearch.DecoderDescriptor;
 import io.trino.spi.TrinoException;
 import io.trino.spi.block.BlockBuilder;
 import org.elasticsearch.common.document.DocumentField;
+import org.elasticsearch.common.time.DateFormatter;
 import org.elasticsearch.search.SearchHit;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.function.Supplier;
 
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -36,18 +38,21 @@ import static java.time.format.DateTimeFormatter.ISO_DATE_TIME;
 import static java.util.Objects.requireNonNull;
 
 public class TimestampDecoder
-        implements Decoder
-{
+        implements Decoder {
     private final String path;
+    private final DateFormatter formatter;
 
-    public TimestampDecoder(String path)
-    {
+    public TimestampDecoder(String path, List<String> formats) {
         this.path = requireNonNull(path, "path is null");
+        if (formats.isEmpty()) {
+            this.formatter = DateFormatter.forPattern("strict_date_optional_time||epoch_millis");
+        } else {
+            this.formatter = DateFormatter.forPattern(String.join("||", formats));
+        }
     }
 
     @Override
-    public void decode(SearchHit hit, Supplier<Object> getter, BlockBuilder output)
-    {
+    public void decode(SearchHit hit, Supplier<Object> getter, BlockBuilder output) {
         DocumentField documentField = hit.getFields().get(path);
         Object value;
 
@@ -56,29 +61,26 @@ public class TimestampDecoder
                 throw new TrinoException(TYPE_MISMATCH, format("Expected single value for column '%s', found: %s", path, documentField.getValues().size()));
             }
             value = documentField.getValue();
-        }
-        else {
+        } else {
             value = getter.get();
         }
 
         if (value == null) {
             output.appendNull();
-        }
-        else {
+        } else {
             LocalDateTime timestamp;
             if (value instanceof String valueString) {
-                Long epochMillis = Longs.tryParse(valueString);
-                if (epochMillis != null) {
-                    timestamp = LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), UTC);
-                }
-                else {
+                try {
+                    timestamp = LocalDateTime.from(formatter.parse(valueString));
+                } catch (DateTimeParseException | IllegalArgumentException e) {
+                    // Compatible for Elasticsearch6
+                    // Docvalue_fields query for Elasticsearch6 will always return ISO_DATE_TIME format
                     timestamp = ISO_DATE_TIME.parse(valueString, LocalDateTime::from);
                 }
-            }
-            else if (value instanceof Number) {
-                timestamp = LocalDateTime.ofInstant(Instant.ofEpochMilli(((Number) value).longValue()), UTC);
-            }
-            else {
+            } else if (value instanceof Number) {
+                String valueString = String.valueOf(value);
+                timestamp = LocalDateTime.from(formatter.parse(valueString));
+            } else {
                 throw new TrinoException(NOT_SUPPORTED, format(
                         "Unsupported representation for field '%s' of type TIMESTAMP: %s [%s]",
                         path,
@@ -93,26 +95,29 @@ public class TimestampDecoder
     }
 
     public static class Descriptor
-            implements DecoderDescriptor
-    {
+            implements DecoderDescriptor {
         private final String path;
+        private final List<String> formats;
 
         @JsonCreator
-        public Descriptor(String path)
-        {
+        public Descriptor(String path, List<String> formats) {
             this.path = path;
+            this.formats = ImmutableList.copyOf(formats);
         }
 
         @JsonProperty
-        public String getPath()
-        {
+        public String getPath() {
             return path;
         }
 
+        @JsonProperty
+        public List<String> getFormats() {
+            return formats;
+        }
+
         @Override
-        public Decoder createDecoder()
-        {
-            return new TimestampDecoder(path);
+        public Decoder createDecoder() {
+            return new TimestampDecoder(path, formats);
         }
     }
 }
