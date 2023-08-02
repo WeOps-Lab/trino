@@ -26,7 +26,7 @@ import org.influxdb.InfluxDBFactory;
 import org.influxdb.dto.Query;
 import org.influxdb.dto.QueryResult;
 
-import javax.inject.Inject;
+import com.google.inject.Inject;
 
 import java.util.ArrayList;
 import java.util.List;

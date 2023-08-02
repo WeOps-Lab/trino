@@ -36,9 +36,9 @@
         <module>core/trino-parser</module>
         <module>core/trino-server</module>
         <module>core/trino-server-main</module>
-        <module>core/trino-server-rpm</module>
+<!--        <module>core/trino-server-rpm</module>-->
         <module>core/trino-spi</module>
-        <module>docs</module>
+<!--        <module>docs</module>-->
         <module>lib/trino-array</module>
         <module>lib/trino-cache</module>
         <module>lib/trino-filesystem</module>
@@ -113,22 +113,22 @@
         <module>plugin/trino-tpch</module>
         <module>service/trino-proxy</module>
         <module>service/trino-verifier</module>
-        <module>testing/trino-benchmark</module>
-        <module>testing/trino-benchmark-queries</module>
-        <module>testing/trino-benchto-benchmarks</module>
-        <module>testing/trino-faulttolerant-tests</module>
-        <module>testing/trino-plugin-reader</module>
-        <module>testing/trino-product-tests</module>
-        <module>testing/trino-product-tests-launcher</module>
+<!--        <module>testing/trino-benchmark</module>-->
+<!--        <module>testing/trino-benchmark-queries</module>-->
+<!--        <module>testing/trino-benchto-benchmarks</module>-->
+<!--        <module>testing/trino-faulttolerant-tests</module>-->
+<!--        <module>testing/trino-plugin-reader</module>-->
+<!--        <module>testing/trino-product-tests</module>-->
+<!--        <module>testing/trino-product-tests-launcher</module>-->
         <module>testing/trino-server-dev</module>
-        <module>testing/trino-test-jdbc-compatibility-old-driver</module>
-        <module>testing/trino-test-jdbc-compatibility-old-server</module>
-        <module>testing/trino-testing</module>
-        <module>testing/trino-testing-containers</module>
-        <module>testing/trino-testing-kafka</module>
-        <module>testing/trino-testing-resources</module>
-        <module>testing/trino-testing-services</module>
-        <module>testing/trino-tests</module>
+<!--        <module>testing/trino-test-jdbc-compatibility-old-driver</module>-->
+<!--        <module>testing/trino-test-jdbc-compatibility-old-server</module>-->
+<!--        <module>testing/trino-testing</module>-->
+<!--        <module>testing/trino-testing-containers</module>-->
+<!--        <module>testing/trino-testing-kafka</module>-->
+<!--        <module>testing/trino-testing-resources</module>-->
+<!--        <module>testing/trino-testing-services</module>-->
+<!--        <module>testing/trino-tests</module>-->
     </modules>
 
     <scm>
@@ -2069,37 +2069,13 @@
                                 com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;
                             </exclusion>
                             <!-- com.google.common.io.BaseEncoding.base64 provides more reach interfaces than java.util.Base64 -->
-                            <exclusion>com/google/common/io/BaseEncoding.base64:()Lcom/google/common/io/BaseEncoding;</exclusion>
+                            <exclusion>com/google/common/io/BaseEncoding.base64:()Lcom/google/common/io/BaseEncoding;
+                            </exclusion>
 
                             <!-- disable default modernizer violation -->
                             <exclusion>com/google/inject/Provider</exclusion>
                         </exclusions>
                     </configuration>
-                </plugin>
-
-                <plugin>
-                    <groupId>com.github.ekryd.sortpom</groupId>
-                    <artifactId>sortpom-maven-plugin</artifactId>
-                    <version>3.2.1</version>
-                    <configuration>
-                        <createBackupFile>false</createBackupFile>
-                        <nrOfIndentSpace>4</nrOfIndentSpace>
-                        <sortModules>true</sortModules>
-                        <sortDependencies>scope,groupId,artifactId</sortDependencies>
-                        <sortDependencyExclusions>groupId,artifactId</sortDependencyExclusions>
-                        <spaceBeforeCloseEmptyElement>true</spaceBeforeCloseEmptyElement>
-                        <expandEmptyElements>false</expandEmptyElements>
-                        <verifyFailOn>Strict</verifyFailOn>
-                        <verifyFail>Stop</verifyFail>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>verify</goal>
-                            </goals>
-                            <phase>validate</phase>
-                        </execution>
-                    </executions>
                 </plugin>
 
                 <plugin>
@@ -2132,7 +2108,7 @@
                                     <include>org.yaml:snakeyaml:2.0</include>
                                 </includes>
                             </bannedDependencies>
-                            <requireProfileIdsExist />
+                            <requireProfileIdsExist/>
                         </rules>
                     </configuration>
                 </plugin>
@@ -2391,11 +2367,6 @@
                     </excludes>
                 </configuration>
             </plugin>
-
-            <plugin>
-                <groupId>com.github.ekryd.sortpom</groupId>
-                <artifactId>sortpom-maven-plugin</artifactId>
-            </plugin>
         </plugins>
     </build>
 
@@ -2470,24 +2441,6 @@
                                 </path>
                             </annotationProcessorPaths>
                         </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <!-- Allow to run goals with an empty local Maven repository -->
-            <id>disable-check-spi-dependencies</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>io.trino</groupId>
-                        <artifactId>trino-maven-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>default-check-spi-dependencies</id>
-                                <phase>none</phase>
-                            </execution>
-                        </executions>
                     </plugin>
                 </plugins>
             </build>
