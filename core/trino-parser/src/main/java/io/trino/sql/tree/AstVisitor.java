@@ -13,7 +13,7 @@
  */
 package io.trino.sql.tree;
 
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 
 public abstract class AstVisitor<R, C>
 {
@@ -98,6 +98,11 @@ public abstract class AstVisitor<R, C>
     }
 
     protected R visitExecute(Execute node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
+    protected R visitExecuteImmediate(ExecuteImmediate node, C context)
     {
         return visitStatement(node, context);
     }
@@ -862,17 +867,7 @@ public abstract class AstVisitor<R, C>
         return visitNode(node, context);
     }
 
-    protected R visitCube(Cube node, C context)
-    {
-        return visitGroupingElement(node, context);
-    }
-
     protected R visitGroupingSets(GroupingSets node, C context)
-    {
-        return visitGroupingElement(node, context);
-    }
-
-    protected R visitRollup(Rollup node, C context)
     {
         return visitGroupingElement(node, context);
     }
@@ -1173,6 +1168,51 @@ public abstract class AstVisitor<R, C>
     }
 
     protected R visitEmptyTableTreatment(EmptyTableTreatment node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitJsonTable(JsonTable node, C context)
+    {
+        return visitRelation(node, context);
+    }
+
+    protected R visitOrdinalityColumn(OrdinalityColumn node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitValueColumn(ValueColumn node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitQueryColumn(QueryColumn node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitNestedColumns(NestedColumns node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitPlanParentChild(PlanParentChild node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitPlanSiblings(PlanSiblings node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitPlanLeaf(PlanLeaf node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitJsonTableDefaultPlan(JsonTableDefaultPlan node, C context)
     {
         return visitNode(node, context);
     }

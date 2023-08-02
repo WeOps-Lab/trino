@@ -62,11 +62,9 @@ public abstract class BaseIcebergMaterializedViewTest
         assertUpdate("CREATE TABLE base_table1(_bigint BIGINT, _date DATE) WITH (partitioning = ARRAY['_date'])");
         assertUpdate("INSERT INTO base_table1 VALUES (0, DATE '2019-09-08'), (1, DATE '2019-09-09'), (2, DATE '2019-09-09')", 3);
         assertUpdate("INSERT INTO base_table1 VALUES (3, DATE '2019-09-09'), (4, DATE '2019-09-10'), (5, DATE '2019-09-10')", 3);
-        assertQuery("SELECT count(*) FROM base_table1", "VALUES 6");
 
         assertUpdate("CREATE TABLE base_table2 (_varchar VARCHAR, _bigint BIGINT, _date DATE) WITH (partitioning = ARRAY['_bigint', '_date'])");
         assertUpdate("INSERT INTO base_table2 VALUES ('a', 0, DATE '2019-09-08'), ('a', 1, DATE '2019-09-08'), ('a', 0, DATE '2019-09-09')", 3);
-        assertQuery("SELECT count(*) FROM base_table2", "VALUES 3");
 
         assertUpdate("CREATE SCHEMA " + storageSchemaName);
     }
@@ -160,6 +158,7 @@ public abstract class BaseIcebergMaterializedViewTest
         assertUpdate("CREATE MATERIALIZED VIEW test_mv_show_create " +
                 "WITH (\n" +
                 "   partitioning = ARRAY['_date'],\n" +
+                "   format = 'ORC',\n" +
                 "   orc_bloom_filter_columns = ARRAY['_date'],\n" +
                 "   orc_bloom_filter_fpp = 0.1) AS " +
                 "SELECT _bigint, _date FROM base_table1");
@@ -403,8 +402,8 @@ public abstract class BaseIcebergMaterializedViewTest
         assertThat(getExplainPlan("SELECT * FROM materialized_view_join_part_stale", ExplainType.Type.IO))
                 .doesNotContain("base_table3", "base_table4");
 
-        assertUpdate("DROP TABLE IF EXISTS base_table3");
-        assertUpdate("DROP TABLE IF EXISTS base_table4");
+        assertUpdate("DROP TABLE base_table3");
+        assertUpdate("DROP TABLE base_table4");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_part_stale");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_join_stale");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_join_part_stale");
@@ -442,7 +441,7 @@ public abstract class BaseIcebergMaterializedViewTest
         assertThat((String) computeScalar("SHOW CREATE MATERIALIZED VIEW materialized_view_window"))
                 .matches("\\QCREATE MATERIALIZED VIEW " + qualifiedMaterializedViewName + "\n" +
                         "WITH (\n" +
-                        "   format = 'ORC',\n" +
+                        "   format = 'PARQUET',\n" +
                         "   format_version = 2,\n" +
                         "   location = '" + getSchemaDirectory() + "/st_\\E[0-9a-f]+-[0-9a-f]+\\Q',\n" +
                         "   partitioning = ARRAY['_date'],\n" +
@@ -547,7 +546,7 @@ public abstract class BaseIcebergMaterializedViewTest
         assertThat(getExplainPlan("SELECT * FROM materialized_view_level1", ExplainType.Type.IO))
                 .contains("base_table5");
 
-        assertUpdate("DROP TABLE IF EXISTS base_table5");
+        assertUpdate("DROP TABLE base_table5");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_level1");
         assertUpdate("DROP MATERIALIZED VIEW materialized_view_level2");
     }

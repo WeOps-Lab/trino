@@ -16,6 +16,7 @@ package io.trino.plugin.hive.metastore.thrift;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.errorprone.annotations.concurrent.GuardedBy;
 import io.trino.hive.thrift.metastore.Database;
 import io.trino.hive.thrift.metastore.FieldSchema;
 import io.trino.hive.thrift.metastore.Partition;
@@ -40,8 +41,6 @@ import io.trino.spi.security.RoleGrant;
 import io.trino.spi.type.Type;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.metastore.TableType;
-
-import javax.annotation.concurrent.GuardedBy;
 
 import java.io.File;
 import java.io.IOException;
@@ -324,6 +323,18 @@ public class InMemoryThriftMetastore
             }
         }
         return tables.build();
+    }
+
+    @Override
+    public synchronized Optional<List<SchemaTableName>> getAllTables()
+    {
+        return Optional.of(ImmutableList.copyOf(relations.keySet()));
+    }
+
+    @Override
+    public synchronized Optional<List<SchemaTableName>> getAllViews()
+    {
+        return Optional.of(ImmutableList.copyOf(views.keySet()));
     }
 
     @Override

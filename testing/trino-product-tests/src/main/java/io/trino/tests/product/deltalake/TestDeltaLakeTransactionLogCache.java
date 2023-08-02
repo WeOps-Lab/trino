@@ -18,10 +18,9 @@ import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsResult;
 import com.google.inject.Inject;
 import com.google.inject.name.Named;
-import io.trino.tempto.BeforeTestWithContext;
+import io.trino.tempto.BeforeMethodWithContext;
 import io.trino.tempto.assertions.QueryAssert;
 import io.trino.testng.services.Flaky;
-import org.assertj.core.api.Assertions;
 import org.testng.annotations.Test;
 
 import java.util.List;
@@ -29,7 +28,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static io.trino.tempto.assertions.QueryAssert.Row.row;
-import static io.trino.tempto.assertions.QueryAssert.assertThat;
 import static io.trino.testing.TestingNames.randomNameSuffix;
 import static io.trino.tests.product.TestGroups.DELTA_LAKE_DATABRICKS;
 import static io.trino.tests.product.TestGroups.DELTA_LAKE_OSS;
@@ -39,6 +37,7 @@ import static io.trino.tests.product.deltalake.util.DeltaLakeTestUtils.DATABRICK
 import static io.trino.tests.product.utils.QueryExecutors.onDelta;
 import static io.trino.tests.product.utils.QueryExecutors.onTrino;
 import static java.lang.String.format;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestDeltaLakeTransactionLogCache
         extends BaseTestDeltaLakeS3Storage
@@ -49,7 +48,7 @@ public class TestDeltaLakeTransactionLogCache
 
     private AmazonS3 s3;
 
-    @BeforeTestWithContext
+    @BeforeMethodWithContext
     public void setup()
     {
         super.setUp();
@@ -102,7 +101,7 @@ public class TestDeltaLakeTransactionLogCache
         DeleteObjectsResult deleteObjectsResult = s3.deleteObjects(
                 new DeleteObjectsRequest(bucketName)
                         .withKeys(transactionLogFilesToRemove));
-        Assertions.assertThat(
+        assertThat(
                         deleteObjectsResult.getDeletedObjects().stream()
                                 .map(DeleteObjectsResult.DeletedObject::getKey)
                                 .collect(Collectors.toList()))

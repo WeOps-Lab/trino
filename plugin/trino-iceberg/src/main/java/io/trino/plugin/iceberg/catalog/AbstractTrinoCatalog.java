@@ -16,6 +16,7 @@ package io.trino.plugin.iceberg.catalog;
 import com.google.common.collect.ImmutableMap;
 import dev.failsafe.Failsafe;
 import dev.failsafe.RetryPolicy;
+import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.HiveMetadata;
@@ -69,6 +70,7 @@ import static io.trino.plugin.hive.HiveMetadata.TABLE_COMMENT;
 import static io.trino.plugin.hive.ViewReaderUtil.ICEBERG_MATERIALIZED_VIEW_COMMENT;
 import static io.trino.plugin.hive.ViewReaderUtil.PRESTO_VIEW_FLAG;
 import static io.trino.plugin.hive.metastore.glue.converter.GlueToTrinoConverter.mappedCopy;
+import static io.trino.plugin.hive.util.HiveUtil.escapeTableName;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_FILESYSTEM_ERROR;
 import static io.trino.plugin.iceberg.IcebergMaterializedViewAdditionalProperties.STORAGE_SCHEMA;
 import static io.trino.plugin.iceberg.IcebergMaterializedViewAdditionalProperties.getStorageSchema;
@@ -202,17 +204,17 @@ public abstract class AbstractTrinoCatalog
 
     protected String createNewTableName(String baseTableName)
     {
-        String tableName = baseTableName;
+        String tableNameLocationComponent = escapeTableName(baseTableName);
         if (useUniqueTableLocation) {
-            tableName += "-" + randomUUID().toString().replace("-", "");
+            tableNameLocationComponent += "-" + randomUUID().toString().replace("-", "");
         }
-        return tableName;
+        return tableNameLocationComponent;
     }
 
     protected void deleteTableDirectory(TrinoFileSystem fileSystem, SchemaTableName schemaTableName, String tableLocation)
     {
         try {
-            fileSystem.deleteDirectory(tableLocation);
+            fileSystem.deleteDirectory(Location.of(tableLocation));
         }
         catch (IOException e) {
             throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, format("Failed to delete directory %s of the table %s", tableLocation, schemaTableName), e);

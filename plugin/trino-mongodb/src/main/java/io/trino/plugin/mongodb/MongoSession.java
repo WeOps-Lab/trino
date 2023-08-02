@@ -18,6 +18,7 @@ import com.google.common.cache.Cache;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Ordering;
 import com.google.common.collect.Streams;
 import com.google.common.primitives.Primitives;
 import com.google.common.primitives.Shorts;
@@ -38,7 +39,7 @@ import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.DeleteResult;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
-import io.trino.collect.cache.EvictableCacheBuilder;
+import io.trino.cache.EvictableCacheBuilder;
 import io.trino.spi.HostAddress;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
@@ -68,6 +69,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -138,9 +140,9 @@ public class MongoSession
     private static final String LTE_OP = "$lte";
     private static final String IN_OP = "$in";
 
-    private static final String DATABASE_NAME = "databaseName";
-    private static final String COLLECTION_NAME = "collectionName";
-    private static final String ID = "id";
+    public static final String DATABASE_NAME = "databaseName";
+    public static final String COLLECTION_NAME = "collectionName";
+    public static final String ID = "id";
 
     // The 'simple' locale is the default collection in MongoDB. The locale doesn't allow specifying other fields (e.g. numericOrdering)
     // https://www.mongodb.com/docs/manual/reference/collation/
@@ -150,6 +152,9 @@ public class MongoSession
             .put("nameOnly", true)
             .put("authorizedCollections", true)
             .buildOrThrow();
+
+    private static final Ordering<MongoColumnHandle> COLUMN_HANDLE_ORDERING = Ordering
+            .from(Comparator.comparingInt(columnHandle -> columnHandle.getDereferenceNames().size()));
 
     private final TypeManager typeManager;
     private final MongoClient client;
@@ -335,6 +340,34 @@ public class MongoSession
         tableCache.invalidate(table.getSchemaTableName());
     }
 
+    public void renameColumn(MongoTableHandle table, String source, String target)
+    {
+        String remoteSchemaName = table.getRemoteTableName().getDatabaseName();
+        String remoteTableName = table.getRemoteTableName().getCollectionName();
+
+        Document metadata = getTableMetadata(remoteSchemaName, remoteTableName);
+
+        List<Document> columns = getColumnMetadata(metadata).stream()
+                .map(document -> {
+                    if (document.getString(FIELDS_NAME_KEY).equals(source)) {
+                        document.put(FIELDS_NAME_KEY, target);
+                    }
+                    return document;
+                })
+                .collect(toImmutableList());
+
+        metadata.append(FIELDS_KEY, columns);
+
+        MongoDatabase database = client.getDatabase(remoteSchemaName);
+        MongoCollection<Document> schema = database.getCollection(schemaCollection);
+        schema.findOneAndReplace(new Document(TABLE_NAME_KEY, remoteTableName), metadata);
+
+        database.getCollection(remoteTableName)
+                .updateMany(Filters.empty(), Updates.rename(source, target));
+
+        tableCache.invalidate(table.getSchemaTableName());
+    }
+
     public void dropColumn(MongoTableHandle table, String columnName)
     {
         String remoteSchemaName = table.getRemoteTableName().getDatabaseName();
@@ -412,7 +445,7 @@ public class MongoSession
 
         Type type = typeManager.fromSqlType(typeString);
 
-        return new MongoColumnHandle(name, type, hidden, Optional.ofNullable(comment));
+        return new MongoColumnHandle(name, ImmutableList.of(), type, hidden, false, Optional.ofNullable(comment));
     }
 
     private List<Document> getColumnMetadata(Document doc)
@@ -454,21 +487,72 @@ public class MongoSession
 
     public MongoCursor<Document> execute(MongoTableHandle tableHandle, List<MongoColumnHandle> columns)
     {
-        Document output = new Document();
-        for (MongoColumnHandle column : columns) {
-            output.append(column.getName(), 1);
-        }
+        Set<MongoColumnHandle> projectedColumns = tableHandle.getProjectedColumns();
+        checkArgument(projectedColumns.isEmpty() || projectedColumns.containsAll(columns), "projectedColumns must be empty or equal to columns");
+
+        Document projection = buildProjection(columns);
+
         MongoCollection<Document> collection = getCollection(tableHandle.getRemoteTableName());
         Document filter = buildFilter(tableHandle);
-        FindIterable<Document> iterable = collection.find(filter).projection(output).collation(SIMPLE_COLLATION);
+        FindIterable<Document> iterable = collection.find(filter).projection(projection).collation(SIMPLE_COLLATION);
         tableHandle.getLimit().ifPresent(iterable::limit);
-        log.debug("Find documents: collection: %s, filter: %s, projection: %s", tableHandle.getSchemaTableName(), filter, output);
+        log.debug("Find documents: collection: %s, filter: %s, projection: %s", tableHandle.getSchemaTableName(), filter, projection);
 
         if (cursorBatchSize != 0) {
             iterable.batchSize(cursorBatchSize);
         }
 
         return iterable.iterator();
+    }
+
+    @VisibleForTesting
+    static Document buildProjection(List<MongoColumnHandle> columns)
+    {
+        Document output = new Document();
+
+        // _id is always projected by mongodb unless its explicitly excluded.
+        // We exclude it explicitly at the start and later include it if its present within columns list.
+        // https://www.mongodb.com/docs/drivers/java/sync/current/fundamentals/builders/projections/#exclusion-of-_id
+        output.append("_id", 0);
+
+        // Starting in MongoDB 4.4, it is illegal to project an embedded document with any of the embedded document's fields
+        // (https://www.mongodb.com/docs/manual/reference/limits/#mongodb-limit-Projection-Restrictions). So, Project only sufficient columns.
+        for (MongoColumnHandle column : projectSufficientColumns(columns)) {
+            output.append(column.getQualifiedName(), 1);
+        }
+
+        return output;
+    }
+
+    /**
+     * Creates a set of sufficient columns for the input projected columns. For example,
+     * if input {@param columns} include columns "a.b" and "a.b.c", then they will be projected from a single column "a.b".
+     */
+    public static List<MongoColumnHandle> projectSufficientColumns(List<MongoColumnHandle> columnHandles)
+    {
+        List<MongoColumnHandle> sortedColumnHandles = COLUMN_HANDLE_ORDERING.sortedCopy(columnHandles);
+        List<MongoColumnHandle> sufficientColumns = new ArrayList<>();
+        for (MongoColumnHandle column : sortedColumnHandles) {
+            if (!parentColumnExists(sufficientColumns, column)) {
+                sufficientColumns.add(column);
+            }
+        }
+        return sufficientColumns;
+    }
+
+    private static boolean parentColumnExists(List<MongoColumnHandle> existingColumns, MongoColumnHandle column)
+    {
+        for (MongoColumnHandle existingColumn : existingColumns) {
+            List<String> existingColumnDereferenceNames = existingColumn.getDereferenceNames();
+            verify(
+                    column.getDereferenceNames().size() >= existingColumnDereferenceNames.size(),
+                    "Selected column's dereference size must be greater than or equal to the existing column's dereference size");
+            if (existingColumn.getBaseName().equals(column.getBaseName())
+                    && column.getDereferenceNames().subList(0, existingColumnDereferenceNames.size()).equals(existingColumnDereferenceNames)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static Document buildFilter(MongoTableHandle table)
@@ -497,7 +581,7 @@ public class MongoSession
 
     private static Optional<Document> buildPredicate(MongoColumnHandle column, Domain domain)
     {
-        String name = column.getName();
+        String name = column.getQualifiedName();
         Type type = column.getType();
         if (domain.getValues().isNone() && domain.isNullAllowed()) {
             return Optional.of(documentOf(name, isNullPredicate()));
@@ -712,8 +796,8 @@ public class MongoSession
         Document metadata = new Document(TABLE_NAME_KEY, remoteTableName);
 
         ArrayList<Document> fields = new ArrayList<>();
-        if (!columns.stream().anyMatch(c -> c.getName().equals("_id"))) {
-            fields.add(new MongoColumnHandle("_id", OBJECT_ID, true, Optional.empty()).getDocument());
+        if (!columns.stream().anyMatch(c -> c.getBaseName().equals("_id"))) {
+            fields.add(new MongoColumnHandle("_id", ImmutableList.of(), OBJECT_ID, true, false, Optional.empty()).getDocument());
         }
 
         fields.addAll(columns.stream()

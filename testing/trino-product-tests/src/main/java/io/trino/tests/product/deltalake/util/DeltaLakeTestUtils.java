@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.MoreCollectors.onlyElement;
 import static io.trino.tests.product.utils.QueryExecutors.onDelta;
 import static io.trino.tests.product.utils.QueryExecutors.onTrino;
@@ -63,10 +64,16 @@ public final class DeltaLakeTestUtils
         return Optional.of(DatabricksVersion.parse(version));
     }
 
+    public static List<String> getColumnNamesOnDelta(String schemaName, String tableName)
+    {
+        QueryResult result = onDelta().executeQuery("SHOW COLUMNS IN " + schemaName + "." + tableName);
+        return result.column(1);
+    }
+
     public static String getColumnCommentOnTrino(String schemaName, String tableName, String columnName)
     {
         return (String) onTrino()
-                .executeQuery("SELECT comment FROM information_schema.columns WHERE table_schema = '" + schemaName + "' AND table_name = '" + tableName + "' AND column_name = '" + columnName + "'")
+                .executeQuery("SELECT comment FROM delta.information_schema.columns WHERE table_schema = '" + schemaName + "' AND table_name = '" + tableName + "' AND column_name = '" + columnName + "'")
                 .getOnlyValue();
     }
 
@@ -76,6 +83,12 @@ public final class DeltaLakeTestUtils
         return (String) result.row(2).get(1);
     }
 
+    public static String getTableCommentOnTrino(String schemaName, String tableName)
+    {
+        return (String) onTrino().executeQuery("SELECT comment FROM system.metadata.table_comments WHERE catalog_name = 'delta' AND schema_name = '" + schemaName + "' AND table_name = '" + tableName + "'")
+                .getOnlyValue();
+    }
+
     public static String getTableCommentOnDelta(String schemaName, String tableName)
     {
         QueryResult result = onDelta().executeQuery(format("DESCRIBE EXTENDED %s.%s", schemaName, tableName));
@@ -83,6 +96,12 @@ public final class DeltaLakeTestUtils
                 .filter(row -> row.get(0).equals("Comment"))
                 .map(row -> row.get(1))
                 .collect(onlyElement());
+    }
+
+    public static String getTablePropertyOnDelta(String schemaName, String tableName, String propertyName)
+    {
+        QueryResult result = onDelta().executeQuery("SHOW TBLPROPERTIES %s.%s(%s)".formatted(schemaName, tableName, propertyName));
+        return (String) getOnlyElement(result.rows()).get(1);
     }
 
     /**

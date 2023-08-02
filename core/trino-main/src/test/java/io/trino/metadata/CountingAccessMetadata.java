@@ -76,20 +76,20 @@ import java.util.Set;
 public class CountingAccessMetadata
         implements Metadata
 {
-    public enum Methods
+    public enum Method
     {
         GET_TABLE_STATISTICS,
     }
 
     private final Metadata delegate;
-    private final ConcurrentHashMultiset<Methods> methodInvocations = ConcurrentHashMultiset.create();
+    private final ConcurrentHashMultiset<Method> methodInvocations = ConcurrentHashMultiset.create();
 
     public CountingAccessMetadata(Metadata delegate)
     {
         this.delegate = delegate;
     }
 
-    public Multiset<Methods> getMethodInvocations()
+    public Multiset<Method> getMethodInvocations()
     {
         return ImmutableMultiset.copyOf(methodInvocations);
     }
@@ -190,6 +190,12 @@ public class CountingAccessMetadata
     }
 
     @Override
+    public CatalogSchemaTableName getTableName(Session session, TableHandle tableHandle)
+    {
+        return delegate.getTableName(session, tableHandle);
+    }
+
+    @Override
     public TableSchema getTableSchema(Session session, TableHandle tableHandle)
     {
         return delegate.getTableSchema(session, tableHandle);
@@ -204,7 +210,7 @@ public class CountingAccessMetadata
     @Override
     public TableStatistics getTableStatistics(Session session, TableHandle tableHandle)
     {
-        methodInvocations.add(Methods.GET_TABLE_STATISTICS);
+        methodInvocations.add(Method.GET_TABLE_STATISTICS);
         return delegate.getTableStatistics(session, tableHandle);
     }
 
@@ -239,9 +245,9 @@ public class CountingAccessMetadata
     }
 
     @Override
-    public void dropSchema(Session session, CatalogSchemaName schema)
+    public void dropSchema(Session session, CatalogSchemaName schema, boolean cascade)
     {
-        delegate.dropSchema(session, schema);
+        delegate.dropSchema(session, schema, cascade);
     }
 
     @Override
@@ -305,15 +311,21 @@ public class CountingAccessMetadata
     }
 
     @Override
-    public void renameColumn(Session session, TableHandle tableHandle, ColumnHandle source, String target)
+    public void renameColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnHandle source, String target)
     {
-        delegate.renameColumn(session, tableHandle, source, target);
+        delegate.renameColumn(session, tableHandle, table, source, target);
     }
 
     @Override
-    public void addColumn(Session session, TableHandle tableHandle, ColumnMetadata column)
+    public void addColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnMetadata column)
     {
-        delegate.addColumn(session, tableHandle, column);
+        delegate.addColumn(session, tableHandle, table, column);
+    }
+
+    @Override
+    public void addField(Session session, TableHandle tableHandle, List<String> parentPath, String fieldName, Type type, boolean ignoreExisting)
+    {
+        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -323,9 +335,9 @@ public class CountingAccessMetadata
     }
 
     @Override
-    public void dropColumn(Session session, TableHandle tableHandle, ColumnHandle column)
+    public void dropColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnHandle column)
     {
-        delegate.dropColumn(session, tableHandle, column);
+        delegate.dropColumn(session, tableHandle, table, column);
     }
 
     @Override
@@ -771,6 +783,12 @@ public class CountingAccessMetadata
     public boolean isAggregationFunction(Session session, QualifiedName name)
     {
         return delegate.isAggregationFunction(session, name);
+    }
+
+    @Override
+    public boolean isWindowFunction(Session session, QualifiedName name)
+    {
+        return delegate.isWindowFunction(session, name);
     }
 
     @Override

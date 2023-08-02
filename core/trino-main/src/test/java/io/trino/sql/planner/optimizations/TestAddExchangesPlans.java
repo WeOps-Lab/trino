@@ -19,7 +19,14 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.trino.FeaturesConfig;
 import io.trino.Session;
+import io.trino.connector.MockConnectorColumnHandle;
+import io.trino.connector.MockConnectorFactory;
+import io.trino.connector.MockConnectorTableHandle;
 import io.trino.plugin.tpch.TpchConnectorFactory;
+import io.trino.spi.connector.ColumnMetadata;
+import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.predicate.TupleDomain;
+import io.trino.spi.type.BigintType;
 import io.trino.sql.planner.OptimizerConfig.JoinDistributionType;
 import io.trino.sql.planner.OptimizerConfig.JoinReorderingStrategy;
 import io.trino.sql.planner.assertions.BasePlanTest;
@@ -30,11 +37,13 @@ import io.trino.sql.planner.plan.ExchangeNode;
 import io.trino.sql.planner.plan.FilterNode;
 import io.trino.sql.planner.plan.JoinNode.DistributionType;
 import io.trino.sql.planner.plan.MarkDistinctNode;
+import io.trino.sql.planner.plan.TableScanNode;
+import io.trino.sql.planner.plan.ValuesNode;
 import io.trino.sql.query.QueryAssertions;
 import io.trino.sql.tree.GenericLiteral;
 import io.trino.sql.tree.LongLiteral;
 import io.trino.testing.LocalQueryRunner;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 
@@ -50,9 +59,12 @@ import static io.trino.SystemSessionProperties.SPILL_ENABLED;
 import static io.trino.SystemSessionProperties.TASK_CONCURRENCY;
 import static io.trino.SystemSessionProperties.USE_COST_BASED_PARTITIONING;
 import static io.trino.SystemSessionProperties.USE_EXACT_PARTITIONING;
-import static io.trino.spi.type.VarcharType.createVarcharType;
 import static io.trino.sql.planner.OptimizerConfig.JoinDistributionType.PARTITIONED;
 import static io.trino.sql.planner.OptimizerConfig.JoinReorderingStrategy.ELIMINATE_CROSS_JOINS;
+import static io.trino.sql.planner.SystemPartitioningHandle.FIXED_ARBITRARY_DISTRIBUTION;
+import static io.trino.sql.planner.SystemPartitioningHandle.FIXED_BROADCAST_DISTRIBUTION;
+import static io.trino.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
+import static io.trino.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.aggregation;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.any;
 import static io.trino.sql.planner.assertions.PlanMatchPattern.anyNot;
@@ -86,7 +98,6 @@ import static io.trino.sql.planner.plan.JoinNode.Type.INNER;
 import static io.trino.sql.planner.plan.TopNNode.Step.FINAL;
 import static io.trino.sql.tree.SortItem.NullOrdering.LAST;
 import static io.trino.sql.tree.SortItem.Ordering.ASCENDING;
-import static io.trino.testing.MaterializedResult.resultBuilder;
 import static io.trino.testing.TestingSession.testSessionBuilder;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -938,16 +949,9 @@ public class TestAddExchangesPlans
     public void testJoinNotExactlyPartitioned()
     {
         QueryAssertions queryAssertions = new QueryAssertions(getQueryRunner());
-        assertThat(queryAssertions.query("SHOW SESSION LIKE 'colocated_join'")).matches(
-                resultBuilder(
-                        getQueryRunner().getDefaultSession(),
-                        createVarcharType(56),
-                        createVarcharType(14),
-                        createVarcharType(14),
-                        createVarcharType(7),
-                        createVarcharType(151))
-                .row("colocated_join", "true", "true", "boolean", "Use a colocated join when possible")
-                .build());
+        assertThat(queryAssertions.query("SHOW SESSION LIKE 'colocated_join'"))
+                .skippingTypesCheck()
+                .matches("SELECT 'colocated_join', 'true', 'true', 'boolean', 'Use a colocated join when possible'");
 
         assertDistributedPlan(
                 """
@@ -976,6 +980,241 @@ public class TestAddExchangesPlans
                         exchange(LOCAL, GATHER,
                                     anyTree(
                                             tableScan("orders")))));
+    }
+
+    @Test
+    public void testBroadcastJoinAboveUnionAll()
+    {
+        // Put union at build side
+        assertDistributedPlan(
+                """
+                    SELECT * FROM region r JOIN (SELECT nationkey FROM nation UNION ALL SELECT nationkey as key FROM nation) n ON r.regionkey = n.nationkey
+                """,
+                noJoinReordering(),
+                anyTree(
+                        join(INNER, join -> join
+                                .equiCriteria("regionkey", "nationkey")
+                                .left(
+                                        project(
+                                                node(FilterNode.class,
+                                                        tableScan("region", ImmutableMap.of("regionkey", "regionkey")))))
+                                .right(
+                                        exchange(LOCAL, GATHER, SINGLE_DISTRIBUTION,
+                                                exchange(REMOTE, REPLICATE, FIXED_BROADCAST_DISTRIBUTION,
+                                                        exchange(LOCAL, REPARTITION, FIXED_ARBITRARY_DISTRIBUTION,
+                                                                project(
+                                                                        tableScan("nation", ImmutableMap.of("nationkey", "nationkey"))),
+                                                                project(
+                                                                        tableScan("nation")))))))));
+        // Put union at probe side
+        assertDistributedPlan(
+                """
+                    SELECT * FROM (SELECT nationkey FROM nation UNION ALL SELECT nationkey as key FROM nation) n JOIN region r ON r.regionkey = n.nationkey
+                """,
+                noJoinReordering(),
+                anyTree(
+                        join(INNER, join -> join
+                                .equiCriteria("nationkey", "regionkey")
+                                .left(
+                                        exchange(LOCAL, REPARTITION, FIXED_ARBITRARY_DISTRIBUTION,
+                                                project(
+                                                        node(FilterNode.class,
+                                                                tableScan("nation", ImmutableMap.of("nationkey", "nationkey")))),
+                                                project(
+                                                        node(FilterNode.class,
+                                                                tableScan("nation")))))
+                                .right(
+                                        exchange(LOCAL, GATHER, SINGLE_DISTRIBUTION,
+                                                exchange(REMOTE, REPLICATE, FIXED_BROADCAST_DISTRIBUTION,
+                                                        project(
+                                                                tableScan("region", ImmutableMap.of("regionkey", "regionkey")))))))));
+    }
+
+    @Test
+    public void testUnionAllAboveBroadcastJoin()
+    {
+        assertDistributedPlan(
+                """
+                    SELECT regionkey FROM nation UNION ALL (SELECT nationkey FROM nation n JOIN region r on r.regionkey = n.nationkey)
+                """,
+                noJoinReordering(),
+                anyTree(
+                        exchange(REMOTE, GATHER, SINGLE_DISTRIBUTION,
+                                tableScan("nation"),
+                                join(INNER, join -> join
+                                        .equiCriteria("nationkey", "regionkey")
+                                        .left(
+                                                project(
+                                                        node(FilterNode.class,
+                                                                tableScan("nation", ImmutableMap.of("nationkey", "nationkey")))))
+                                        .right(
+                                                exchange(LOCAL, GATHER, SINGLE_DISTRIBUTION,
+                                                        exchange(REMOTE, REPLICATE, FIXED_BROADCAST_DISTRIBUTION,
+                                                                project(
+                                                                        tableScan("region", ImmutableMap.of("regionkey", "regionkey"))))))))));
+    }
+
+    @Test
+    public void testGroupedAggregationAboveUnionAllCrossJoined()
+    {
+        assertDistributedPlan(
+                """
+                    SELECT sum(nationkey) FROM (SELECT nationkey FROM nation UNION ALL SELECT nationkey FROM nation), region group by nationkey
+                """,
+                noJoinReordering(),
+                anyTree(
+                        join(INNER, join -> join
+                                .left(
+                                        exchange(LOCAL, REPARTITION, FIXED_ARBITRARY_DISTRIBUTION,
+                                                tableScan("nation", ImmutableMap.of("nationkey", "nationkey")),
+                                                tableScan("nation")))
+                                .right(
+                                        exchange(LOCAL, GATHER, SINGLE_DISTRIBUTION,
+                                                exchange(REMOTE, REPLICATE, FIXED_BROADCAST_DISTRIBUTION,
+                                                        tableScan("region")))))));
+    }
+
+    @Test
+    public void testGroupedAggregationAboveUnionAll()
+    {
+        assertDistributedPlan(
+                """
+                    SELECT sum(nationkey) FROM (SELECT nationkey FROM nation UNION ALL SELECT nationkey FROM nation) GROUP BY nationkey
+                """,
+                noJoinReordering(),
+                anyTree(
+                        exchange(LOCAL, REPARTITION, FIXED_HASH_DISTRIBUTION,
+                                project(
+                                        exchange(REMOTE, REPARTITION, FIXED_HASH_DISTRIBUTION,
+                                                project(
+                                                        aggregation(ImmutableMap.of("partial_sum", functionCall("sum", ImmutableList.of("nationkey"))),
+                                                                PARTIAL,
+                                                                tableScan("nation", ImmutableMap.of("nationkey", "nationkey")))))),
+                                project(
+                                        exchange(REMOTE, REPARTITION, FIXED_HASH_DISTRIBUTION,
+                                                project(
+                                                        aggregation(ImmutableMap.of("partial_sum", functionCall("sum", ImmutableList.of("nationkey"))),
+                                                                PARTIAL,
+                                                                tableScan("nation", ImmutableMap.of("nationkey", "nationkey")))))))));
+    }
+
+    @Test
+    public void testUnionAllOnPartitionedAndUnpartitionedSources()
+    {
+        assertDistributedPlan(
+                """
+                     SELECT * FROM (SELECT nationkey FROM nation UNION ALL VALUES (1))
+                """,
+                noJoinReordering(),
+                output(
+                        exchange(LOCAL, REPARTITION, FIXED_ARBITRARY_DISTRIBUTION,
+                                values("1"),
+                                exchange(REMOTE, GATHER, SINGLE_DISTRIBUTION,
+                                        tableScan("nation")))));
+    }
+
+    @Test
+    public void testNestedUnionAll()
+    {
+        assertDistributedPlan(
+                """
+                     SELECT * FROM ((SELECT nationkey FROM nation) UNION ALL (SELECT nationkey FROM nation)) UNION ALL (SELECT nationkey FROM nation)
+                """,
+                noJoinReordering(),
+                output(
+                        exchange(REMOTE, GATHER, SINGLE_DISTRIBUTION,
+                                tableScan("nation"),
+                                tableScan("nation"),
+                                tableScan("nation"))));
+    }
+
+    @Test
+    public void testUnionAllOnSourceAndHashDistributedChildren()
+    {
+        assertDistributedPlan(
+                """
+                     SELECT * FROM ((SELECT nationkey FROM nation) UNION ALL (SELECT nationkey FROM nation)) UNION ALL (SELECT sum(nationkey) FROM nation GROUP BY nationkey)
+                """,
+                noJoinReordering(),
+                output(
+                        exchange(REMOTE, GATHER, SINGLE_DISTRIBUTION,
+                                tableScan("nation"),
+                                tableScan("nation"),
+                                project(
+                                        anyTree(
+                                                exchange(REMOTE, REPARTITION, FIXED_HASH_DISTRIBUTION,
+                                                        project(
+                                                                aggregation(ImmutableMap.of("partial_sum", functionCall("sum", ImmutableList.of("nationkey"))),
+                                                                        PARTIAL,
+                                                                        tableScan("nation", ImmutableMap.of("nationkey", "nationkey"))))))))));
+    }
+
+    @Test
+    public void testUnionAllOnDifferentCatalogs()
+    {
+        MockConnectorFactory connectorFactory = MockConnectorFactory.builder()
+                .withGetColumns(schemaTableName -> ImmutableList.of(
+                        new ColumnMetadata("nationkey", BigintType.BIGINT)))
+                .withGetTableHandle(((session, schemaTableName) -> new MockConnectorTableHandle(
+                        SchemaTableName.schemaTableName("default", "nation"),
+                        TupleDomain.all(),
+                        Optional.of(ImmutableList.of(new MockConnectorColumnHandle("nationkey", BigintType.BIGINT))))))
+                .withName("mock")
+                .build();
+        getQueryRunner().createCatalog("mock", connectorFactory, ImmutableMap.of());
+
+        // Need to use JOIN as parent of UNION ALL to expose replacing remote exchange with local exchange
+        assertDistributedPlan(
+                """
+                         SELECT * FROM (SELECT nationkey FROM nation UNION ALL SELECT nationkey FROM mock.default.nation), region
+                """,
+                noJoinReordering(),
+                output(
+                        join(INNER, join -> join
+                                .left(exchange(REMOTE, REPARTITION, FIXED_ARBITRARY_DISTRIBUTION,
+                                        tableScan("nation"),
+                                        node(TableScanNode.class)))
+                                .right(
+                                        exchange(LOCAL, GATHER, SINGLE_DISTRIBUTION,
+                                                exchange(REMOTE, REPLICATE, FIXED_BROADCAST_DISTRIBUTION,
+                                                        tableScan("region")))))));
+    }
+
+    @Test
+    public void testUnionAllOnInternalCatalog()
+    {
+        // Need to use JOIN as parent of UNION ALL to expose replacing remote exchange with local exchange
+        // TODO: https://starburstdata.atlassian.net/browse/SEP-11273
+        assertDistributedPlan(
+                """
+                         SELECT * FROM (SELECT table_catalog FROM system.information_schema.tables UNION ALL SELECT table_catalog FROM system.information_schema.tables), region
+                """,
+                noJoinReordering(),
+                output(
+                        join(INNER, join -> join
+                                .left(exchange(LOCAL, REPARTITION, FIXED_ARBITRARY_DISTRIBUTION,
+                                        tableScan("tables"),
+                                        tableScan("tables")))
+                                .right(
+                                        exchange(
+                                                LOCAL, GATHER, SINGLE_DISTRIBUTION,
+                                                exchange(REMOTE, REPLICATE, FIXED_BROADCAST_DISTRIBUTION,
+                                                        tableScan("region")))))));
+    }
+
+    @Test
+    public void testUnionAllOnTableScanAndValues()
+    {
+        assertDistributedPlan(
+                """
+                         SELECT * FROM (SELECT nationkey FROM nation UNION ALL VALUES(1))
+                """,
+                noJoinReordering(),
+                output(
+                        exchange(LOCAL, REPARTITION, FIXED_ARBITRARY_DISTRIBUTION,
+                                node(ValuesNode.class),
+                                exchange(REMOTE, GATHER, SINGLE_DISTRIBUTION,
+                                        tableScan("nation")))));
     }
 
     private Session spillEnabledWithJoinDistributionType(JoinDistributionType joinDistributionType)

@@ -14,8 +14,11 @@
 package io.trino.plugin.iceberg.procedure;
 
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
+import com.google.inject.Provider;
 import io.trino.filesystem.FileEntry;
 import io.trino.filesystem.FileIterator;
+import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.iceberg.IcebergConfig;
@@ -29,15 +32,11 @@ import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.procedure.Procedure;
 import org.apache.iceberg.TableMetadataParser;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
-
 import java.io.IOException;
 import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.trino.plugin.base.util.Procedures.checkProcedureArgument;
@@ -46,7 +45,7 @@ import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_INVALID_METADATA;
 import static io.trino.plugin.iceberg.IcebergUtil.METADATA_FILE_EXTENSION;
 import static io.trino.plugin.iceberg.IcebergUtil.METADATA_FOLDER_NAME;
 import static io.trino.plugin.iceberg.IcebergUtil.parseVersion;
-import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
+import static io.trino.spi.StandardErrorCode.INVALID_PROCEDURE_ARGUMENT;
 import static io.trino.spi.StandardErrorCode.PERMISSION_DENIED;
 import static io.trino.spi.StandardErrorCode.SCHEMA_NOT_FOUND;
 import static io.trino.spi.type.VarcharType.VARCHAR;
@@ -143,13 +142,13 @@ public class RegisterTableProcedure
 
         TrinoFileSystem fileSystem = fileSystemFactory.create(clientSession);
         String metadataLocation = getMetadataLocation(fileSystem, tableLocation, metadataFileName);
-        validateLocation(fileSystem, metadataLocation);
+        validateMetadataLocation(fileSystem, Location.of(metadataLocation));
         try {
             // Try to read the metadata file. Invalid metadata file will throw the exception.
             TableMetadataParser.read(new ForwardingFileIo(fileSystem), metadataLocation);
         }
         catch (RuntimeException e) {
-            throw new TrinoException(ICEBERG_INVALID_METADATA, metadataLocation + " is not a valid metadata file", e);
+            throw new TrinoException(ICEBERG_INVALID_METADATA, "Invalid metadata file: " + metadataLocation, e);
         }
 
         catalog.registerTable(clientSession, schemaTableName, tableLocation, metadataLocation);
@@ -175,25 +174,24 @@ public class RegisterTableProcedure
 
     public static String getLatestMetadataLocation(TrinoFileSystem fileSystem, String location)
     {
-        List<String> latestMetadataLocations = new ArrayList<>();
+        List<Location> latestMetadataLocations = new ArrayList<>();
         String metadataDirectoryLocation = format("%s/%s", stripTrailingSlash(location), METADATA_FOLDER_NAME);
         try {
             int latestMetadataVersion = -1;
-            FileIterator fileIterator = fileSystem.listFiles(metadataDirectoryLocation);
+            FileIterator fileIterator = fileSystem.listFiles(Location.of(metadataDirectoryLocation));
             while (fileIterator.hasNext()) {
                 FileEntry fileEntry = fileIterator.next();
-                if (fileEntry.location().contains(METADATA_FILE_EXTENSION)) {
-                    OptionalInt version = parseVersion(fileEntry.location());
-                    if (version.isPresent()) {
-                        int versionNumber = version.getAsInt();
-                        if (versionNumber > latestMetadataVersion) {
-                            latestMetadataVersion = versionNumber;
-                            latestMetadataLocations.clear();
-                            latestMetadataLocations.add(fileEntry.location());
-                        }
-                        else if (versionNumber == latestMetadataVersion) {
-                            latestMetadataLocations.add(fileEntry.location());
-                        }
+                Location fileLocation = fileEntry.location();
+                String fileName = fileLocation.fileName();
+                if (fileName.endsWith(METADATA_FILE_EXTENSION)) {
+                    int versionNumber = parseVersion(fileName);
+                    if (versionNumber > latestMetadataVersion) {
+                        latestMetadataVersion = versionNumber;
+                        latestMetadataLocations.clear();
+                        latestMetadataLocations.add(fileLocation);
+                    }
+                    else if (versionNumber == latestMetadataVersion) {
+                        latestMetadataLocations.add(fileLocation);
                     }
                 }
             }
@@ -208,20 +206,20 @@ public class RegisterTableProcedure
             }
         }
         catch (IOException e) {
-            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed checking table's location: " + location, e);
+            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Failed checking table location: " + location, e);
         }
-        return getOnlyElement(latestMetadataLocations);
+        return getOnlyElement(latestMetadataLocations).toString();
     }
 
-    private static void validateLocation(TrinoFileSystem fileSystem, String location)
+    private static void validateMetadataLocation(TrinoFileSystem fileSystem, Location location)
     {
         try {
             if (!fileSystem.newInputFile(location).exists()) {
-                throw new TrinoException(GENERIC_USER_ERROR, format("Location %s does not exist", location));
+                throw new TrinoException(INVALID_PROCEDURE_ARGUMENT, "Metadata file does not exist: " + location);
             }
         }
         catch (IOException e) {
-            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, format("Invalid location: %s", location), e);
+            throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Invalid metadata file location: " + location, e);
         }
     }
 }

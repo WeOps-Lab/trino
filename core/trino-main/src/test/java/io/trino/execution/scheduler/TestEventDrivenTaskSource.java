@@ -25,6 +25,7 @@ import com.google.common.collect.SetMultimap;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import com.google.common.util.concurrent.SettableFuture;
+import com.google.errorprone.annotations.concurrent.GuardedBy;
 import io.trino.exchange.SpoolingExchangeInput;
 import io.trino.execution.TableExecuteContextManager;
 import io.trino.execution.scheduler.SplitAssigner.AssignmentResult;
@@ -45,8 +46,6 @@ import io.trino.sql.planner.plan.PlanNodeId;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import javax.annotation.concurrent.GuardedBy;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -665,15 +664,15 @@ public class TestEventDrivenTaskSource
                 if (partitions.add(partition)) {
                     result.addPartition(new Partition(partition, new NodeRequirements(Optional.empty(), ImmutableSet.of())));
                     for (PlanNodeId finishedSource : finishedSources) {
-                        result.updatePartition(new PartitionUpdate(partition, finishedSource, ImmutableList.of(), true));
+                        result.updatePartition(new PartitionUpdate(partition, finishedSource, false, ImmutableList.of(), true));
                     }
                 }
-                result.updatePartition(new PartitionUpdate(partition, planNodeId, splits, noMoreSplits));
+                result.updatePartition(new PartitionUpdate(partition, planNodeId, true, splits, noMoreSplits));
             });
             if (noMoreSplits) {
                 finishedSources.add(planNodeId);
                 for (Integer partition : partitions) {
-                    result.updatePartition(new PartitionUpdate(partition, planNodeId, ImmutableList.of(), true));
+                    result.updatePartition(new PartitionUpdate(partition, planNodeId, false, ImmutableList.of(), true));
                 }
             }
             if (finishedSources.containsAll(allSources)) {

@@ -26,8 +26,8 @@ import io.trino.spi.function.FunctionDependencyDeclaration;
 import io.trino.spi.function.FunctionId;
 import io.trino.spi.function.FunctionMetadata;
 import io.trino.spi.function.SchemaFunctionName;
+import io.trino.spi.function.table.ConnectorTableFunctionHandle;
 import io.trino.spi.predicate.TupleDomain;
-import io.trino.spi.ptf.ConnectorTableFunctionHandle;
 import io.trino.spi.security.GrantInfo;
 import io.trino.spi.security.Privilege;
 import io.trino.spi.security.RoleGrant;
@@ -36,8 +36,7 @@ import io.trino.spi.statistics.ComputedStatistics;
 import io.trino.spi.statistics.TableStatistics;
 import io.trino.spi.statistics.TableStatisticsMetadata;
 import io.trino.spi.type.Type;
-
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -54,6 +53,7 @@ import java.util.stream.Collectors;
 
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
+import static io.trino.spi.expression.Constant.FALSE;
 import static io.trino.spi.expression.StandardFunctions.AND_FUNCTION_NAME;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
@@ -222,8 +222,7 @@ public interface ConnectorMetadata
      *
      * @throws RuntimeException if table handle is no longer valid
      */
-    @Deprecated // ... and optimized implementations already removed
-    default SchemaTableName getSchemaTableName(ConnectorSession session, ConnectorTableHandle table)
+    default SchemaTableName getTableName(ConnectorSession session, ConnectorTableHandle table)
     {
         return getTableSchema(session, table).getTable();
     }
@@ -257,6 +256,9 @@ public interface ConnectorMetadata
     /**
      * List table, view and materialized view names, possibly filtered by schema. An empty list is returned if none match.
      * An empty list is returned also when schema name does not refer to an existing schema.
+     *
+     * @see #listViews(ConnectorSession, Optional)
+     * @see #listMaterializedViews(ConnectorSession, Optional)
      */
     default List<SchemaTableName> listTables(ConnectorSession session, Optional<String> schemaName)
     {
@@ -324,8 +326,23 @@ public interface ConnectorMetadata
     /**
      * Drops the specified schema.
      *
-     * @throws TrinoException with {@code SCHEMA_NOT_EMPTY} if the schema is not empty
+     * @throws TrinoException with {@code SCHEMA_NOT_EMPTY} if {@code cascade} is false and the schema is not empty
      */
+    default void dropSchema(ConnectorSession session, String schemaName, boolean cascade)
+    {
+        if (!cascade) {
+            dropSchema(session, schemaName);
+            return;
+        }
+        throw new TrinoException(NOT_SUPPORTED, "This connector does not support dropping schemas with CASCADE option");
+    }
+
+    /**
+     * Drops the specified schema.
+     *
+     * @deprecated use {@link #dropSchema(ConnectorSession, String, boolean)}
+     */
+    @Deprecated
     default void dropSchema(ConnectorSession session, String schemaName)
     {
         throw new TrinoException(NOT_SUPPORTED, "This connector does not support dropping schemas");
@@ -431,6 +448,17 @@ public interface ConnectorMetadata
     default void addColumn(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column)
     {
         throw new TrinoException(NOT_SUPPORTED, "This connector does not support adding columns");
+    }
+
+    /**
+     * Add the specified field, potentially nested, to a row.
+     *
+     * @param parentPath path to a field within the column, without leaf field name.
+     */
+    @Experimental(eta = "2023-06-01") // TODO add support for rows inside arrays and maps and for anonymous row fields
+    default void addField(ConnectorSession session, ConnectorTableHandle tableHandle, List<String> parentPath, String fieldName, Type type, boolean ignoreExisting)
+    {
+        throw new TrinoException(NOT_SUPPORTED, "This connector does not support adding fields");
     }
 
     /**
@@ -686,11 +714,11 @@ public interface ConnectorMetadata
      * Finish a merge query
      *
      * @param session The session
-     * @param tableHandle A ConnectorMergeTableHandle for the table that is the target of the merge
+     * @param mergeTableHandle A ConnectorMergeTableHandle for the table that is the target of the merge
      * @param fragments All fragments returned by the merge plan
      * @param computedStatistics Statistics for the table, meaningful only to the connector that produced them.
      */
-    default void finishMerge(ConnectorSession session, ConnectorMergeTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
+    default void finishMerge(ConnectorSession session, ConnectorMergeTableHandle mergeTableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
         throw new TrinoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata beginMerge() is implemented without finishMerge()");
     }
@@ -729,8 +757,10 @@ public interface ConnectorMetadata
     }
 
     /**
-     * List view names, possibly filtered by schema. An empty list is returned if none match.
+     * List view names (but not materialized views), possibly filtered by schema. An empty list is returned if none match.
      * An empty list is returned also when schema name does not refer to an existing schema.
+     *
+     * @see #listMaterializedViews(ConnectorSession, Optional)
      */
     default List<SchemaTableName> listViews(ConnectorSession session, Optional<String> schemaName)
     {
@@ -738,7 +768,7 @@ public interface ConnectorMetadata
     }
 
     /**
-     * Gets the definitions of views, possibly filtered by schema.
+     * Gets the definitions of views (but not materialized views), possibly filtered by schema.
      * This optional method may be implemented by connectors that can support fetching
      * view data in bulk. It is used to implement {@code information_schema.views}.
      */
@@ -765,32 +795,10 @@ public interface ConnectorMetadata
 
     /**
      * Gets the schema properties for the specified schema.
-     *
-     * @deprecated use {@link #getSchemaProperties(ConnectorSession, String)}
-     */
-    @Deprecated(forRemoval = true)
-    default Map<String, Object> getSchemaProperties(ConnectorSession session, CatalogSchemaName schemaName)
-    {
-        return Map.of();
-    }
-
-    /**
-     * Gets the schema properties for the specified schema.
      */
     default Map<String, Object> getSchemaProperties(ConnectorSession session, String schemaName)
     {
-        return getSchemaProperties(session, new CatalogSchemaName("invalid", schemaName));
-    }
-
-    /**
-     * Get the schema properties for the specified schema.
-     *
-     * @deprecated use {@link #getSchemaOwner(ConnectorSession, String)}
-     */
-    @Deprecated(forRemoval = true)
-    default Optional<TrinoPrincipal> getSchemaOwner(ConnectorSession session, CatalogSchemaName schemaName)
-    {
-        return Optional.empty();
+        return Map.of();
     }
 
     /**
@@ -798,7 +806,7 @@ public interface ConnectorMetadata
      */
     default Optional<TrinoPrincipal> getSchemaOwner(ConnectorSession session, String schemaName)
     {
-        return getSchemaOwner(session, new CatalogSchemaName("invalid", schemaName));
+        return Optional.empty();
     }
 
     /**
@@ -1051,8 +1059,14 @@ public interface ConnectorMetadata
      */
     default Optional<ConstraintApplicationResult<ConnectorTableHandle>> applyFilter(ConnectorSession session, ConnectorTableHandle handle, Constraint constraint)
     {
-        if (constraint.getSummary().getDomains().isEmpty()) {
+        // applyFilter is expected not to be invoked with a "false" constraint
+        if (constraint.getSummary().isNone()) {
             throw new IllegalArgumentException("constraint summary is NONE");
+        }
+        if (FALSE.equals(constraint.getExpression())) {
+            // DomainTranslator translates FALSE expressions into TupleDomain.none() (via Visitor#visitBooleanLiteral)
+            // so the remaining expression shouldn't be FALSE and therefore the translated connectorExpression shouldn't be FALSE either.
+            throw new IllegalArgumentException("constraint expression is FALSE");
         }
         return Optional.empty();
     }
@@ -1448,11 +1462,15 @@ public interface ConnectorMetadata
         return Optional.empty();
     }
 
+    // TODO - Remove this method since now it is only used in test BaseConnectorTest#testWrittenDataSize()
+    @Deprecated
     default boolean supportsReportingWrittenBytes(ConnectorSession session, SchemaTableName schemaTableName, Map<String, Object> tableProperties)
     {
         return false;
     }
 
+    // TODO - Remove this method since now it is only used in test BaseConnectorTest#testWrittenDataSize()
+    @Deprecated
     default boolean supportsReportingWrittenBytes(ConnectorSession session, ConnectorTableHandle connectorTableHandle)
     {
         return false;

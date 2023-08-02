@@ -15,6 +15,7 @@ package io.trino.plugin.kudu;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.inject.Inject;
 import io.airlift.slice.Slice;
 import io.trino.plugin.kudu.properties.KuduTableProperties;
 import io.trino.plugin.kudu.properties.PartitionDesign;
@@ -55,8 +56,6 @@ import org.apache.kudu.Schema;
 import org.apache.kudu.client.KuduTable;
 import org.apache.kudu.client.PartitionSchema.HashBucketSchema;
 
-import javax.inject.Inject;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -68,6 +67,7 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.function.Consumer;
 
+import static com.google.common.base.Strings.emptyToNull;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.plugin.kudu.KuduColumnHandle.ROW_ID;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -162,6 +162,8 @@ public class KuduMetadata
     {
         KuduTable table = tableHandle.getTable(clientSession);
         Schema schema = table.getSchema();
+        // Kudu returns empty string as a table comment by default
+        Optional<String> tableComment = Optional.ofNullable(emptyToNull(table.getComment()));
 
         List<ColumnMetadata> columnsMetaList = schema.getColumns().stream()
                 .filter(column -> !column.isKey() || !column.getName().equals(ROW_ID))
@@ -169,7 +171,7 @@ public class KuduMetadata
                 .collect(toImmutableList());
 
         Map<String, Object> properties = clientSession.getTableProperties(tableHandle);
-        return new ConnectorTableMetadata(tableHandle.getSchemaTableName(), columnsMetaList, properties);
+        return new ConnectorTableMetadata(tableHandle.getSchemaTableName(), columnsMetaList, properties, tableComment);
     }
 
     @Override
@@ -248,9 +250,6 @@ public class KuduMetadata
     @Override
     public void createTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, boolean ignoreExisting)
     {
-        if (tableMetadata.getComment().isPresent()) {
-            throw new TrinoException(NOT_SUPPORTED, "This connector does not support creating tables with table comment");
-        }
         if (tableMetadata.getColumns().stream().anyMatch(column -> column.getComment() != null)) {
             throw new TrinoException(NOT_SUPPORTED, "This connector does not support creating tables with column comment");
         }
@@ -338,9 +337,6 @@ public class KuduMetadata
         if (retryMode != NO_RETRIES) {
             throw new TrinoException(NOT_SUPPORTED, "This connector does not support query retries");
         }
-        if (tableMetadata.getComment().isPresent()) {
-            throw new TrinoException(NOT_SUPPORTED, "This connector does not support creating tables with table comment");
-        }
         PartitionDesign design = KuduTableProperties.getPartitionDesign(tableMetadata.getProperties());
         boolean generateUUID = !design.hasPartitions();
         ConnectorTableMetadata finalTableMetadata = tableMetadata;
@@ -426,7 +422,7 @@ public class KuduMetadata
     }
 
     @Override
-    public void finishMerge(ConnectorSession session, ConnectorMergeTableHandle tableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
+    public void finishMerge(ConnectorSession session, ConnectorMergeTableHandle mergeTableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
     {
         // For Kudu, nothing needs to be done finish the merge.
     }

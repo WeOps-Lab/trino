@@ -129,7 +129,6 @@ public class BeginTableWrite
                     node.getColumns(),
                     node.getColumnNames(),
                     node.getPartitioningScheme(),
-                    node.getPreferredPartitioningScheme(),
                     node.getStatisticsAggregation(),
                     node.getStatisticsAggregationDescriptor());
         }
@@ -146,8 +145,7 @@ public class BeginTableWrite
                     node.getFragmentSymbol(),
                     node.getColumns(),
                     node.getColumnNames(),
-                    node.getPartitioningScheme(),
-                    node.getPreferredPartitioningScheme());
+                    node.getPartitioningScheme());
         }
 
         @Override
@@ -210,8 +208,7 @@ public class BeginTableWrite
                 return new TableExecuteTarget(
                         target.getExecuteHandle(),
                         findTableScanHandleForTableExecute(((TableExecuteNode) node).getSource()),
-                        target.getSchemaTableName(),
-                        target.isReportingWrittenBytesSupported());
+                        target.getSchemaTableName());
             }
 
             if (node instanceof MergeWriterNode mergeWriterNode) {
@@ -246,15 +243,13 @@ public class BeginTableWrite
                 return new CreateTarget(
                         metadata.beginCreateTable(session, create.getCatalog(), create.getTableMetadata(), create.getLayout()),
                         create.getTableMetadata().getTable(),
-                        target.supportsReportingWrittenBytes(metadata, session),
                         target.supportsMultipleWritersPerPartition(metadata, session),
                         target.getMaxWriterTasks(metadata, session));
             }
             if (target instanceof InsertReference insert) {
                 return new InsertTarget(
                         metadata.beginInsert(session, insert.getHandle(), insert.getColumns()),
-                        metadata.getTableMetadata(session, insert.getHandle()).getTable(),
-                        target.supportsReportingWrittenBytes(metadata, session),
+                        metadata.getTableName(session, insert.getHandle()).getSchemaTableName(),
                         target.supportsMultipleWritersPerPartition(metadata, session),
                         target.getMaxWriterTasks(metadata, session));
             }
@@ -270,12 +265,12 @@ public class BeginTableWrite
                 return new TableWriterNode.RefreshMaterializedViewTarget(
                         refreshMV.getStorageTableHandle(),
                         metadata.beginRefreshMaterializedView(session, refreshMV.getStorageTableHandle(), refreshMV.getSourceTableHandles()),
-                        metadata.getTableMetadata(session, refreshMV.getStorageTableHandle()).getTable(),
+                        metadata.getTableName(session, refreshMV.getStorageTableHandle()).getSchemaTableName(),
                         refreshMV.getSourceTableHandles());
             }
             if (target instanceof TableExecuteTarget tableExecute) {
                 BeginTableExecuteResult<TableExecuteHandle, TableHandle> result = metadata.beginTableExecute(session, tableExecute.getExecuteHandle(), tableExecute.getMandatorySourceHandle());
-                return new TableExecuteTarget(result.getTableExecuteHandle(), Optional.of(result.getSourceHandle()), tableExecute.getSchemaTableName(), tableExecute.isReportingWrittenBytesSupported());
+                return new TableExecuteTarget(result.getTableExecuteHandle(), Optional.of(result.getSourceHandle()), tableExecute.getSchemaTableName());
             }
             throw new IllegalArgumentException("Unhandled target type: " + target.getClass().getSimpleName());
         }

@@ -22,8 +22,10 @@ import io.trino.parquet.dictionary.Dictionary;
 import io.trino.parquet.reader.SimpleSliceInputStream;
 import io.trino.parquet.reader.TestingColumnReader;
 import io.trino.parquet.reader.flat.ColumnAdapter;
+import io.trino.parquet.reader.flat.DictionaryDecoder;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Type;
+import jakarta.annotation.Nullable;
 import org.apache.parquet.bytes.ByteBufferInputStream;
 import org.apache.parquet.bytes.HeapByteBufferAllocator;
 import org.apache.parquet.column.ColumnDescriptor;
@@ -44,8 +46,6 @@ import org.apache.parquet.schema.PrimitiveType;
 import org.apache.parquet.schema.Types;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -71,7 +71,6 @@ import static io.trino.parquet.ParquetEncoding.PLAIN_DICTIONARY;
 import static io.trino.parquet.ParquetEncoding.RLE_DICTIONARY;
 import static io.trino.parquet.ValuesType.VALUES;
 import static io.trino.parquet.reader.decoders.ValueDecoder.ValueDecodersProvider;
-import static io.trino.parquet.reader.decoders.ValueDecoders.getDictionaryDecoder;
 import static io.trino.testing.DataProviders.cartesianProduct;
 import static io.trino.testing.DataProviders.concat;
 import static io.trino.testing.DataProviders.toDataProvider;
@@ -147,12 +146,12 @@ public abstract class AbstractValueDecodersTest
         ValuesReader valuesReader = getApacheParquetReader(encoding, field, dictionary);
         ValueDecoder<T> apacheValuesDecoder = testType.apacheValuesDecoderProvider().apply(valuesReader);
 
-        Optional<ValueDecoder<T>> dictionaryDecoder = dictionaryPage.map(page -> getDictionaryDecoder(
+        Optional<ValueDecoder<T>> dictionaryDecoder = dictionaryPage.map(page -> DictionaryDecoder.getDictionaryDecoder(
                 page,
                 testType.columnAdapter(),
-                testType.optimizedValuesDecoderProvider().create(PLAIN, field),
+                testType.optimizedValuesDecoderProvider().create(PLAIN),
                 field.isRequired()));
-        ValueDecoder<T> optimizedValuesDecoder = dictionaryDecoder.orElseGet(() -> testType.optimizedValuesDecoderProvider().create(encoding, field));
+        ValueDecoder<T> optimizedValuesDecoder = dictionaryDecoder.orElseGet(() -> testType.optimizedValuesDecoderProvider().create(encoding));
 
         apacheValuesDecoder.init(new SimpleSliceInputStream(dataBuffer.dataPage()));
         optimizedValuesDecoder.init(new SimpleSliceInputStream(dataBuffer.dataPage()));

@@ -95,17 +95,17 @@ S3 configuration properties
     * - ``hive.s3.streaming.part-size``
       - The part size for S3 streaming upload. Defaults to ``16MB``.
     * - ``hive.s3.proxy.host``
-      - Proxy host to use if connecting through a proxy
+      - Proxy host to use if connecting through a proxy.
     * - ``hive.s3.proxy.port``
-      - Proxy port to use if connecting through a proxy
+      - Proxy port to use if connecting through a proxy.
     * - ``hive.s3.proxy.protocol``
       - Proxy protocol. HTTP or HTTPS , defaults to ``HTTPS``.
     * - ``hive.s3.proxy.non-proxy-hosts``
       - Hosts list to access without going through the proxy.
     * - ``hive.s3.proxy.username``
-      - Proxy user name to use if connecting through a proxy
+      - Proxy user name to use if connecting through a proxy.
     * - ``hive.s3.proxy.password``
-      - Proxy password name to use if connecting through a proxy
+      - Proxy password to use if connecting through a proxy.
     * - ``hive.s3.proxy.preemptive-basic-auth``
       - Whether to attempt to authenticate preemptively against proxy when using
         base authorization, defaults to ``false``.
@@ -381,7 +381,7 @@ workload:
 * Your query filter predicates use columns that have a data type supported by
   Trino and S3 Select.
   The ``TIMESTAMP``, ``REAL``, and ``DOUBLE`` data types are not supported by S3
-  Select Pushdown. We recommend using the decimal data type for numerical data.
+  Select Pushdown. We recommend using the DECIMAL data type for numerical data.
   For more information about supported data types for S3 Select, see the
   `Data Types documentation <https://docs.aws.amazon.com/AmazonS3/latest/dev/s3-glacier-select-sql-reference-data-types.html>`_.
 * Your network connection between Amazon S3 and the Amazon EMR cluster has good

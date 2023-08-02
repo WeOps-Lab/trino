@@ -20,6 +20,8 @@ import io.trino.testing.QueryRunner;
 import io.trino.testing.TestingConnectorBehavior;
 import io.trino.testing.sql.SqlExecutor;
 import io.trino.testing.sql.TestTable;
+import io.trino.testng.services.Flaky;
+import org.intellij.lang.annotations.Language;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -37,6 +39,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 public class TestIgniteConnectorTest
         extends BaseJdbcConnectorTest
 {
+    private static final String SCHEMA_CHANGE_OPERATION_FAIL_ISSUE = "https://github.com/trinodb/trino/issues/14391";
+    @Language("RegExp")
+    private static final String SCHEMA_CHANGE_OPERATION_FAIL_MATCH = "Schema change operation failed: Thread got interrupted while trying to acquire table lock.";
+
     private TestingIgniteServer igniteServer;
 
     @Override
@@ -74,10 +80,7 @@ public class TestIgniteConnectorTest
             case SUPPORTS_CREATE_TABLE_WITH_COLUMN_COMMENT:
                 return false;
 
-            case SUPPORTS_ADD_COLUMN:
-            case SUPPORTS_DROP_COLUMN:
-                return true;
-
+            case SUPPORTS_ADD_COLUMN_NOT_NULL_CONSTRAINT:
             case SUPPORTS_ADD_COLUMN_WITH_COMMENT:
             case SUPPORTS_SET_COLUMN_TYPE:
                 return false;
@@ -92,12 +95,19 @@ public class TestIgniteConnectorTest
 
             case SUPPORTS_JOIN_PUSHDOWN:
             case SUPPORTS_PREDICATE_EXPRESSION_PUSHDOWN_WITH_LIKE:
-            case SUPPORTS_AGGREGATION_PUSHDOWN_COUNT_DISTINCT:
             case SUPPORTS_TOPN_PUSHDOWN_WITH_VARCHAR:
-            case SUPPORTS_NOT_NULL_CONSTRAINT:
                 return true;
 
             case SUPPORTS_NATIVE_QUERY:
+                return false;
+
+            case SUPPORTS_AGGREGATION_PUSHDOWN:
+                return true;
+            case SUPPORTS_AGGREGATION_PUSHDOWN_STDDEV:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_VARIANCE:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_COVARIANCE:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_CORRELATION:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_REGRESSION:
                 return false;
 
             default:
@@ -313,18 +323,9 @@ public class TestIgniteConnectorTest
         assertThat(e).hasMessage("Schema change operation failed: Thread got interrupted while trying to acquire table lock.");
     }
 
+    @Test
     @Override
-    public void testAddNotNullColumnToNonEmptyTable()
-    {
-        // Override because the connector supports both ADD COLUMN and NOT NULL constraint, but it doesn't support adding NOT NULL columns
-        try (TestTable table = new TestTable(getQueryRunner()::execute, "test_add_notnull_col", "(a_varchar varchar)")) {
-            assertQueryFails(
-                    "ALTER TABLE " + table.getName() + " ADD COLUMN b_varchar varchar NOT NULL",
-                    "This connector does not support adding not null columns");
-        }
-    }
-
-    @Override
+    @Flaky(issue = SCHEMA_CHANGE_OPERATION_FAIL_ISSUE, match = SCHEMA_CHANGE_OPERATION_FAIL_MATCH)
     public void testDropAndAddColumnWithSameName()
     {
         // Override because Ignite can access old data after dropping and adding a column with same name
@@ -335,6 +336,38 @@ public class TestIgniteConnectorTest
             assertUpdate("ALTER TABLE " + table.getName() + " ADD COLUMN y int");
             assertQuery("SELECT * FROM " + table.getName(), "VALUES (1, 3, 2)");
         }
+    }
+
+    @Test
+    @Override
+    @Flaky(issue = SCHEMA_CHANGE_OPERATION_FAIL_ISSUE, match = SCHEMA_CHANGE_OPERATION_FAIL_MATCH)
+    public void testAddColumn()
+    {
+        super.testAddColumn();
+    }
+
+    @Test
+    @Override
+    @Flaky(issue = SCHEMA_CHANGE_OPERATION_FAIL_ISSUE, match = SCHEMA_CHANGE_OPERATION_FAIL_MATCH)
+    public void testDropColumn()
+    {
+        super.testDropColumn();
+    }
+
+    @Test
+    @Override
+    @Flaky(issue = SCHEMA_CHANGE_OPERATION_FAIL_ISSUE, match = SCHEMA_CHANGE_OPERATION_FAIL_MATCH)
+    public void testAlterTableAddLongColumnName()
+    {
+        super.testAlterTableAddLongColumnName();
+    }
+
+    @Test(dataProvider = "testColumnNameDataProvider")
+    @Override
+    @Flaky(issue = SCHEMA_CHANGE_OPERATION_FAIL_ISSUE, match = SCHEMA_CHANGE_OPERATION_FAIL_MATCH)
+    public void testAddAndDropColumnName(String columnName)
+    {
+        super.testAddAndDropColumnName(columnName);
     }
 
     @Override
@@ -392,22 +425,22 @@ public class TestIgniteConnectorTest
         assertQuery("SELECT orderdate FROM orders WHERE orderdate = DATE '1997-09-14'", "VALUES DATE '1997-09-14'");
         assertQueryFails(
                 "SELECT * FROM orders WHERE orderdate = DATE '-1996-09-14'",
-                errorMessageForDateOutOrRange("-1996-09-14"));
+                errorMessageForDateOutOfRange("-1996-09-14"));
     }
 
     @Override
     protected String errorMessageForInsertNegativeDate(String date)
     {
-        return errorMessageForDateOutOrRange(date);
+        return errorMessageForDateOutOfRange(date);
     }
 
     @Override
     protected String errorMessageForCreateTableAsSelectNegativeDate(String date)
     {
-        return errorMessageForDateOutOrRange(date);
+        return errorMessageForDateOutOfRange(date);
     }
 
-    private String errorMessageForDateOutOrRange(String date)
+    private String errorMessageForDateOutOfRange(String date)
     {
         return "Date must be between 1970-01-01 and 9999-12-31 in Ignite: " + date;
     }

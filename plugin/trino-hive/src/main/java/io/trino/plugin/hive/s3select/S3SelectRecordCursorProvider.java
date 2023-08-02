@@ -15,10 +15,13 @@ package io.trino.plugin.hive.s3select;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.inject.Inject;
+import io.trino.filesystem.Location;
 import io.trino.hdfs.HdfsEnvironment;
 import io.trino.plugin.hive.HiveColumnHandle;
 import io.trino.plugin.hive.HiveRecordCursorProvider;
 import io.trino.plugin.hive.ReaderColumns;
+import io.trino.plugin.hive.s3select.csv.S3SelectCsvRecordReader;
 import io.trino.plugin.hive.type.TypeInfo;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorSession;
@@ -27,8 +30,6 @@ import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.TypeManager;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-
-import javax.inject.Inject;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -66,7 +67,7 @@ public class S3SelectRecordCursorProvider
     public Optional<ReaderRecordCursorWithProjections> createRecordCursor(
             Configuration configuration,
             ConnectorSession session,
-            Path path,
+            Location location,
             long start,
             long length,
             long fileSize,
@@ -80,6 +81,7 @@ public class S3SelectRecordCursorProvider
             return Optional.empty();
         }
 
+        Path path = new Path(location.toString());
         try {
             this.hdfsEnvironment.getFileSystem(session.getIdentity(), path, configuration);
         }
@@ -105,7 +107,11 @@ public class S3SelectRecordCursorProvider
         if (s3SelectDataTypeOptional.isPresent()) {
             S3SelectDataType s3SelectDataType = s3SelectDataTypeOptional.get();
 
-            IonSqlQueryBuilder queryBuilder = new IonSqlQueryBuilder(typeManager, s3SelectDataType);
+            Optional<String> nullCharacterEncoding = Optional.empty();
+            if (s3SelectDataType == S3SelectDataType.CSV) {
+                nullCharacterEncoding = S3SelectCsvRecordReader.nullCharacterEncoding(schema);
+            }
+            IonSqlQueryBuilder queryBuilder = new IonSqlQueryBuilder(typeManager, s3SelectDataType, nullCharacterEncoding);
             String ionSqlQuery = queryBuilder.buildSql(readerColumns, effectivePredicate);
             Optional<S3SelectLineRecordReader> recordReader = S3SelectLineRecordReaderProvider.get(configuration, path, start, length, schema,
                     ionSqlQuery, s3ClientFactory, s3SelectDataType);

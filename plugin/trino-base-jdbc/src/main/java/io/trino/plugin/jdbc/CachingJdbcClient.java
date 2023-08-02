@@ -18,9 +18,10 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheStats;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.UncheckedExecutionException;
+import com.google.inject.Inject;
 import io.airlift.jmx.CacheStatsMBean;
 import io.airlift.units.Duration;
-import io.trino.collect.cache.EvictableCacheBuilder;
+import io.trino.cache.EvictableCacheBuilder;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
 import io.trino.plugin.jdbc.IdentityCacheMapping.IdentityCacheKey;
 import io.trino.plugin.jdbc.JdbcProcedureHandle.ProcedureQuery;
@@ -45,8 +46,6 @@ import io.trino.spi.type.Type;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
 
-import javax.inject.Inject;
-
 import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -55,18 +54,18 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.function.Predicate;
 
 import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
-import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static io.trino.cache.CacheUtils.invalidateAllIf;
 import static io.trino.plugin.jdbc.BaseJdbcConfig.CACHING_DISABLED;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -567,9 +566,15 @@ public class CachingJdbcClient
         return delegate.getTableScanRedirection(session, tableHandle);
     }
 
+    @Override
+    public OptionalInt getMaxWriteParallelism(ConnectorSession session)
+    {
+        return delegate.getMaxWriteParallelism(session);
+    }
+
     public void onDataChanged(SchemaTableName table)
     {
-        invalidateCache(statisticsCache, key -> key.mayReference(table));
+        invalidateAllIf(statisticsCache, key -> key.mayReference(table));
     }
 
     /**
@@ -580,7 +585,7 @@ public class CachingJdbcClient
     @Deprecated
     public void onDataChanged(JdbcTableHandle handle)
     {
-        invalidateCache(statisticsCache, key -> key.equals(handle));
+        statisticsCache.invalidate(handle);
     }
 
     @Override
@@ -634,15 +639,15 @@ public class CachingJdbcClient
     private void invalidateTableCaches(SchemaTableName schemaTableName)
     {
         invalidateColumnsCache(schemaTableName);
-        invalidateCache(tableHandlesByNameCache, key -> key.tableName.equals(schemaTableName));
+        invalidateAllIf(tableHandlesByNameCache, key -> key.tableName.equals(schemaTableName));
         tableHandlesByQueryCache.invalidateAll();
-        invalidateCache(tableNamesCache, key -> key.schemaName.equals(Optional.of(schemaTableName.getSchemaName())));
-        invalidateCache(statisticsCache, key -> key.mayReference(schemaTableName));
+        invalidateAllIf(tableNamesCache, key -> key.schemaName.equals(Optional.of(schemaTableName.getSchemaName())));
+        invalidateAllIf(statisticsCache, key -> key.mayReference(schemaTableName));
     }
 
     private void invalidateColumnsCache(SchemaTableName table)
     {
-        invalidateCache(columnsCache, key -> key.table.equals(table));
+        invalidateAllIf(columnsCache, key -> key.table.equals(table));
     }
 
     @VisibleForTesting
@@ -685,15 +690,6 @@ public class CachingJdbcClient
     CacheStats getStatisticsCacheStats()
     {
         return statisticsCache.stats();
-    }
-
-    private static <T, V> void invalidateCache(Cache<T, V> cache, Predicate<T> filterFunction)
-    {
-        Set<T> cacheKeys = cache.asMap().keySet().stream()
-                .filter(filterFunction)
-                .collect(toImmutableSet());
-
-        cache.invalidateAll(cacheKeys);
     }
 
     private record ColumnsCacheKey(IdentityCacheKey identity, Map<String, Object> sessionProperties, SchemaTableName table)

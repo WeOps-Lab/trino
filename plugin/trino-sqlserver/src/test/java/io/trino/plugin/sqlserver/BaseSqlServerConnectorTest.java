@@ -61,9 +61,13 @@ public abstract class BaseSqlServerConnectorTest
                 return false;
 
             case SUPPORTS_PREDICATE_EXPRESSION_PUSHDOWN:
-            case SUPPORTS_AGGREGATION_PUSHDOWN_STDDEV:
-            case SUPPORTS_AGGREGATION_PUSHDOWN_VARIANCE:
                 return true;
+
+            case SUPPORTS_AGGREGATION_PUSHDOWN_COVARIANCE:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_CORRELATION:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_REGRESSION:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_COUNT_DISTINCT:
+                return false;
 
             case SUPPORTS_JOIN_PUSHDOWN:
                 return true;
@@ -167,6 +171,7 @@ public abstract class BaseSqlServerConnectorTest
                     .hasMessageMatching("(?s).*(" +
                             "No task completed before timeout|" +
                             "was deadlocked on lock resources with another process and has been chosen as the deadlock victim|" +
+                            "Lock request time out period exceeded|" +
                             // E.g. system.metadata.table_comments can return empty results, when underlying metadata list tables call fails
                             "Expecting actual not to be empty).*");
             throw new SkipException("to be fixed");

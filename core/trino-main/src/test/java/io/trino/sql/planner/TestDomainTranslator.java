@@ -18,7 +18,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
-import io.trino.likematcher.LikeMatcher;
 import io.trino.metadata.TestingFunctionResolution;
 import io.trino.security.AllowAllAccessControl;
 import io.trino.spi.predicate.Domain;
@@ -49,6 +48,7 @@ import io.trino.sql.tree.NullLiteral;
 import io.trino.sql.tree.QualifiedName;
 import io.trino.sql.tree.StringLiteral;
 import io.trino.transaction.TestingTransactionManager;
+import io.trino.type.LikePattern;
 import io.trino.type.LikePatternType;
 import io.trino.type.TypeCoercion;
 import org.joda.time.DateTime;
@@ -599,6 +599,13 @@ public class TestDomainTranslator
     }
 
     @Test
+    public void testFromCastOfNullPredicate()
+    {
+        assertPredicateIsAlwaysFalse(cast(nullLiteral(), BOOLEAN));
+        assertPredicateIsAlwaysFalse(not(cast(nullLiteral(), BOOLEAN)));
+    }
+
+    @Test
     public void testFromNotPredicate()
     {
         assertUnsupportedPredicate(not(and(equal(C_BIGINT, bigintLiteral(1L)), unprocessableExpression1(C_BIGINT))));
@@ -832,6 +839,16 @@ public class TestDomainTranslator
         assertPredicateTranslates(not(lessThanOrEqual(C_REAL, nanReal)), tupleDomain(C_REAL, Domain.notNull(REAL)));
         assertPredicateIsAlwaysFalse(not(notEqual(C_REAL, nanReal)));
         assertUnsupportedPredicate(not(isDistinctFrom(C_REAL, nanReal)));
+    }
+
+    @Test
+    public void testFromCoercionComparisonsWithNaN()
+    {
+        Expression nanDouble = literalEncoder.toExpression(TEST_SESSION, Double.NaN, DOUBLE);
+
+        assertPredicateIsAlwaysFalse(equal(cast(C_TINYINT, DOUBLE), nanDouble));
+        assertPredicateIsAlwaysFalse(equal(cast(C_SMALLINT, DOUBLE), nanDouble));
+        assertPredicateIsAlwaysFalse(equal(cast(C_INTEGER, DOUBLE), nanDouble));
     }
 
     @Test
@@ -2115,7 +2132,7 @@ public class TestDomainTranslator
     {
         return new FunctionCall(QualifiedName.of(LIKE_FUNCTION_NAME), ImmutableList.of(
                 symbol.toSymbolReference(),
-                literalEncoder.toExpression(TEST_SESSION, LikeMatcher.compile(pattern, Optional.empty()), LikePatternType.LIKE_PATTERN)));
+                literalEncoder.toExpression(TEST_SESSION, LikePattern.compile(pattern, Optional.empty()), LikePatternType.LIKE_PATTERN)));
     }
 
     private FunctionCall like(Symbol symbol, Expression pattern, Expression escape)
@@ -2127,7 +2144,7 @@ public class TestDomainTranslator
     {
         return new FunctionCall(QualifiedName.of(LIKE_FUNCTION_NAME), ImmutableList.of(
                 symbol.toSymbolReference(),
-                literalEncoder.toExpression(TEST_SESSION, LikeMatcher.compile(pattern, Optional.of(escape)), LikePatternType.LIKE_PATTERN)));
+                literalEncoder.toExpression(TEST_SESSION, LikePattern.compile(pattern, Optional.of(escape)), LikePatternType.LIKE_PATTERN)));
     }
 
     private static FunctionCall startsWith(Symbol symbol, Expression expression)

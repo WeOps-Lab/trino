@@ -50,8 +50,7 @@ import io.trino.sql.tree.NullLiteral;
 import io.trino.sql.tree.QualifiedName;
 import io.trino.sql.tree.StringLiteral;
 import io.trino.sql.tree.TimestampLiteral;
-
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 
 import java.util.List;
 
@@ -131,7 +130,7 @@ public final class LiteralEncoder
 
         if (type.equals(BIGINT)) {
             LongLiteral expression = new LongLiteral(object.toString());
-            if (expression.getValue() >= Integer.MIN_VALUE && expression.getValue() <= Integer.MAX_VALUE) {
+            if (expression.getParsedValue() >= Integer.MIN_VALUE && expression.getParsedValue() <= Integer.MAX_VALUE) {
                 return new GenericLiteral("BIGINT", object.toString());
             }
             return new LongLiteral(object.toString());

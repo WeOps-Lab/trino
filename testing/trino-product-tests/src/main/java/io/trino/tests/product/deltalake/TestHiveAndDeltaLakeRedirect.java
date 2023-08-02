@@ -19,7 +19,6 @@ import io.trino.tempto.query.QueryExecutionException;
 import io.trino.tempto.query.QueryResult;
 import io.trino.testng.services.Flaky;
 import org.assertj.core.api.AbstractStringAssert;
-import org.assertj.core.api.Assertions;
 import org.assertj.core.api.Condition;
 import org.intellij.lang.annotations.Language;
 import org.testng.annotations.DataProvider;
@@ -33,7 +32,6 @@ import java.util.List;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.tempto.assertions.QueryAssert.Row.row;
 import static io.trino.tempto.assertions.QueryAssert.assertQueryFailure;
-import static io.trino.tempto.assertions.QueryAssert.assertThat;
 import static io.trino.tempto.query.QueryExecutor.param;
 import static io.trino.testing.TestingNames.randomNameSuffix;
 import static io.trino.tests.product.TestGroups.DELTA_LAKE_DATABRICKS;
@@ -46,6 +44,7 @@ import static io.trino.tests.product.utils.QueryExecutors.onDelta;
 import static io.trino.tests.product.utils.QueryExecutors.onTrino;
 import static java.lang.String.format;
 import static java.sql.JDBCType.VARCHAR;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestHiveAndDeltaLakeRedirect
         extends BaseTestDeltaLakeS3Storage
@@ -88,7 +87,7 @@ public class TestHiveAndDeltaLakeRedirect
                     .collect(toImmutableList()));
         }
         finally {
-            onDelta().executeQuery(format("DROP TABLE %s.%s", schemaName, tableName));
+            dropDeltaTableWithRetry(format("%s.%s", schemaName, tableName));
             onDelta().executeQuery("DROP SCHEMA " + schemaName);
         }
     }
@@ -607,7 +606,7 @@ public class TestHiveAndDeltaLakeRedirect
                     .containsOnly(expectedDestinationTableRows);
         }
         finally {
-            onDelta().executeQuery(format("DROP TABLE %s.%s", destSchema, destTableName));
+            dropDeltaTableWithRetry(format("%s.%s", destSchema, destTableName));
             onTrino().executeQuery("DROP SCHEMA " + destSchema);
         }
     }
@@ -653,7 +652,7 @@ public class TestHiveAndDeltaLakeRedirect
                             row("delta", schemaName, tableName, "comment", 4, null, "YES", "varchar"));
         }
         finally {
-            onDelta().executeQuery(format("DROP TABLE IF EXISTS %s.%s", schemaName, tableName));
+            dropDeltaTableWithRetry(format("%s.%s", schemaName, tableName));
             onTrino().executeQuery("DROP SCHEMA " + schemaName);
         }
     }
@@ -743,7 +742,7 @@ public class TestHiveAndDeltaLakeRedirect
                             row("delta", schemaName, tableName, "comment"));
         }
         finally {
-            onDelta().executeQuery(format("DROP TABLE IF EXISTS %s.%s", schemaName, tableName));
+            dropDeltaTableWithRetry(format("%s.%s", schemaName, tableName));
             onTrino().executeQuery("DROP SCHEMA " + schemaName);
         }
     }
@@ -926,7 +925,7 @@ public class TestHiveAndDeltaLakeRedirect
 
     private static AbstractStringAssert<?> assertTableComment(String catalog, String schema, String tableName)
     {
-        return Assertions.assertThat((String) readTableComment(catalog, schema, tableName).getOnlyValue());
+        return assertThat((String) readTableComment(catalog, schema, tableName).getOnlyValue());
     }
 
     private static QueryResult readTableComment(String catalog, String schema, String tableName)
@@ -940,7 +939,7 @@ public class TestHiveAndDeltaLakeRedirect
 
     private static AbstractStringAssert<?> assertColumnComment(String catalog, String schema, String tableName, String columnName)
     {
-        return Assertions.assertThat((String) readColumnComment(catalog, schema, tableName, columnName).getOnlyValue());
+        return assertThat((String) readColumnComment(catalog, schema, tableName, columnName).getOnlyValue());
     }
 
     private static QueryResult readColumnComment(String catalog, String schema, String tableName, String columnName)
