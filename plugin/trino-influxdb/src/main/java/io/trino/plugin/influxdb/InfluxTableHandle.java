@@ -24,14 +24,14 @@ import io.trino.spi.predicate.TupleDomain;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalInt;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class InfluxTableHandle
-        implements ConnectorTableHandle
-{
+        implements ConnectorTableHandle {
     private final String schemaName;
     private final String tableName;
     private final List<InfluxColumnHandle> columns;
@@ -39,14 +39,18 @@ public class InfluxTableHandle
     private final List<ColumnHandle> projections;
     private final OptionalInt limit;
 
-    public InfluxTableHandle(String schemaName, String tableName)
-    {
-        this(schemaName, tableName, ImmutableList.of(), TupleDomain.all(), ImmutableList.of(), OptionalInt.empty());
+    private final Optional<String> query;
+
+    public InfluxTableHandle(String schemaName, String tableName) {
+        this(schemaName, tableName, ImmutableList.of(), TupleDomain.all(), ImmutableList.of(), OptionalInt.empty(), Optional.empty());
     }
 
-    public InfluxTableHandle(String schemaName, String tableName, List<InfluxColumnHandle> columns)
-    {
-        this(schemaName, tableName, columns, TupleDomain.all(), ImmutableList.of(), OptionalInt.empty());
+    public InfluxTableHandle(String schemaName, String tableName, Optional<String> query) {
+        this(schemaName, tableName, ImmutableList.of(), TupleDomain.all(), ImmutableList.of(), OptionalInt.empty(), query);
+    }
+
+    public InfluxTableHandle(String schemaName, String tableName, List<InfluxColumnHandle> columns) {
+        this(schemaName, tableName, columns, TupleDomain.all(), ImmutableList.of(), OptionalInt.empty(), Optional.empty());
     }
 
     @JsonCreator
@@ -56,99 +60,91 @@ public class InfluxTableHandle
             @JsonProperty("columns") List<InfluxColumnHandle> columns,
             @JsonProperty("constraint") TupleDomain<ColumnHandle> constraint,
             @JsonProperty("projections") List<ColumnHandle> projections,
-            @JsonProperty("limit") OptionalInt limit)
-    {
+            @JsonProperty("limit") OptionalInt limit,
+            @JsonProperty("limit") Optional<String> query) {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
         this.constraint = requireNonNull(constraint, "constraint is null");
         this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
         this.projections = ImmutableList.copyOf(requireNonNull(projections, "projections is null"));
         this.limit = requireNonNull(limit, "limit is null");
+        this.query = query;
     }
 
-    public InfluxTableHandle withProjections(List<ColumnHandle> projections)
-    {
+    public InfluxTableHandle withProjections(List<ColumnHandle> projections) {
         return new InfluxTableHandle(
                 schemaName,
                 tableName,
                 columns,
                 constraint,
                 projections,
-                limit);
+                limit,
+                query);
     }
 
-    public InfluxTableHandle withConstraint(TupleDomain<ColumnHandle> constraint)
-    {
+    public InfluxTableHandle withConstraint(TupleDomain<ColumnHandle> constraint) {
         return new InfluxTableHandle(
                 schemaName,
                 tableName,
                 columns,
                 constraint,
                 projections,
-                limit);
+                limit,
+                query);
     }
 
-    public InfluxTableHandle withLimit(OptionalInt limit)
-    {
+    public InfluxTableHandle withLimit(OptionalInt limit) {
         return new InfluxTableHandle(
                 schemaName,
                 tableName,
                 columns,
                 constraint,
                 projections,
-                limit);
+                limit,
+                query);
     }
 
     @JsonProperty
-    public String getSchemaName()
-    {
+    public String getSchemaName() {
         return schemaName;
     }
 
     @JsonProperty
-    public String getTableName()
-    {
+    public String getTableName() {
         return tableName;
     }
 
     @JsonProperty
-    public List<InfluxColumnHandle> getColumns()
-    {
+    public List<InfluxColumnHandle> getColumns() {
         return columns;
     }
 
     @JsonProperty
-    public TupleDomain<ColumnHandle> getConstraint()
-    {
+    public TupleDomain<ColumnHandle> getConstraint() {
         return constraint;
     }
 
     @JsonProperty
-    public List<ColumnHandle> getProjections()
-    {
+    public List<ColumnHandle> getProjections() {
         return projections;
     }
 
     @JsonProperty
-    public OptionalInt getLimit()
-    {
+    public OptionalInt getLimit() {
         return limit;
     }
 
-    public SchemaTableName toSchemaTableName()
-    {
+    public SchemaTableName toSchemaTableName() {
         return new SchemaTableName(schemaName, tableName);
     }
 
     @Override
-    public int hashCode()
-    {
+    public int hashCode() {
         return Objects.hash(schemaName, tableName);
     }
 
     @Override
-    public boolean equals(Object o)
-    {
+    public boolean equals(Object o) {
         if (this == o) {
             return true;
         }
@@ -165,8 +161,7 @@ public class InfluxTableHandle
     }
 
     @Override
-    public String toString()
-    {
+    public String toString() {
         return toStringHelper(this)
                 .add("schemaName", schemaName)
                 .add("tableName", tableName)
