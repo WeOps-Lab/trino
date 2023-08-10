@@ -18,6 +18,8 @@ import com.google.common.collect.ImmutableList;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.util.Optional;
+
 import static io.trino.plugin.influxdb.InfluxConstant.ColumnKind.FIELD;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
@@ -47,7 +49,7 @@ public class TestInfluxRecordSet
         assertThatThrownBy(() -> new InfluxRecordSet(null, ImmutableList.of(), null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("tableHandle is null");
-        assertThatThrownBy(() -> new InfluxRecordSet(new InfluxTableHandle("a", "b"), null, null))
+        assertThatThrownBy(() -> new InfluxRecordSet(new InfluxTableHandle("a", "b", ImmutableList.of(), Optional.empty()), null, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("columnHandles is null");
     }

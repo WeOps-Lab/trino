@@ -16,8 +16,12 @@ package io.trino.plugin.influxdb;
 
 import com.google.inject.Binder;
 import com.google.inject.Module;
+import com.google.inject.Scopes;
+import io.trino.plugin.influxdb.ptf.RawQuery;
+import io.trino.spi.ptf.ConnectorTableFunction;
 
 import static com.google.inject.Scopes.SINGLETON;
+import static com.google.inject.multibindings.Multibinder.newSetBinder;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 
 public class InfluxModule
@@ -34,5 +38,7 @@ public class InfluxModule
         binder.bind(InfluxSplitManager.class).in(SINGLETON);
         binder.bind(InfluxRecordSetProvider.class).in(SINGLETON);
         binder.bind(InfluxConnector.class).in(SINGLETON);
+
+        newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(RawQuery.class).in(Scopes.SINGLETON);
     }
 }

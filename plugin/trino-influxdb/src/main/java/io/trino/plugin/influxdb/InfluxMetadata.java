@@ -17,27 +17,14 @@ package io.trino.plugin.influxdb;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import io.trino.spi.connector.Assignment;
-import io.trino.spi.connector.ColumnHandle;
-import io.trino.spi.connector.ColumnMetadata;
-import io.trino.spi.connector.ConnectorMetadata;
-import io.trino.spi.connector.ConnectorSession;
-import io.trino.spi.connector.ConnectorTableHandle;
-import io.trino.spi.connector.ConnectorTableMetadata;
-import io.trino.spi.connector.Constraint;
-import io.trino.spi.connector.ConstraintApplicationResult;
-import io.trino.spi.connector.LimitApplicationResult;
-import io.trino.spi.connector.ProjectionApplicationResult;
-import io.trino.spi.connector.SchemaTableName;
-import io.trino.spi.connector.SchemaTablePrefix;
-import io.trino.spi.connector.TableColumnsMetadata;
-import io.trino.spi.connector.TableNotFoundException;
+import io.trino.spi.connector.*;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.EquatableValueSet;
 import io.trino.spi.predicate.Range;
 import io.trino.spi.predicate.SortedRangeSet;
 import io.trino.spi.predicate.TupleDomain;
+import io.trino.spi.ptf.ConnectorTableFunctionHandle;
 import io.trino.spi.type.TimestampType;
 
 import javax.inject.Inject;
@@ -52,6 +39,9 @@ import java.util.Set;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.plugin.influxdb.TypeUtils.isPushdownSupportedType;
+
+import io.trino.plugin.influxdb.ptf.RawQuery.RawQueryFunctionHandle;
+
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DoubleType.DOUBLE;
@@ -60,25 +50,21 @@ import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
 public class InfluxMetadata
-        implements ConnectorMetadata
-{
+        implements ConnectorMetadata {
     private final InfluxClient client;
 
     @Inject
-    public InfluxMetadata(InfluxClient client)
-    {
+    public InfluxMetadata(InfluxClient client) {
         this.client = requireNonNull(client, "client is null");
     }
 
     @Override
-    public List<String> listSchemaNames(ConnectorSession session)
-    {
+    public List<String> listSchemaNames(ConnectorSession session) {
         return ImmutableList.copyOf(client.getSchemaNames());
     }
 
     @Override
-    public List<SchemaTableName> listTables(ConnectorSession session, Optional<String> optionalSchemaName)
-    {
+    public List<SchemaTableName> listTables(ConnectorSession session, Optional<String> optionalSchemaName) {
         Set<String> schemaNames = optionalSchemaName.map(ImmutableSet::of)
                 .orElseGet(() -> ImmutableSet.copyOf(client.getSchemaNames()));
 
@@ -88,22 +74,19 @@ public class InfluxMetadata
     }
 
     @Override
-    public InfluxTableHandle getTableHandle(ConnectorSession session, SchemaTableName schemaTableName)
-    {
+    public InfluxTableHandle getTableHandle(ConnectorSession session, SchemaTableName schemaTableName) {
         return client.getTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName())
-                .map(table -> new InfluxTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName())).orElse(null);
+                .map(table -> new InfluxTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName(),  ImmutableList.of(), Optional.empty())).orElse(null);
     }
 
     @Override
-    public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle tableHandle)
-    {
+    public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle tableHandle) {
         return getTableMetadata(((InfluxTableHandle) tableHandle).toSchemaTableName())
                 .orElseThrow(() -> new RuntimeException("The table handle is invalid " + tableHandle));
     }
 
     @Override
-    public Map<String, ColumnHandle> getColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
-    {
+    public Map<String, ColumnHandle> getColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle) {
         InfluxTableHandle influxTableHandle = (InfluxTableHandle) tableHandle;
 
         InfluxTableHandle table = client.getTableHandle(influxTableHandle.getSchemaName(), influxTableHandle.getTableName())
@@ -118,15 +101,13 @@ public class InfluxMetadata
     }
 
     @Override
-    public ColumnMetadata getColumnMetadata(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle columnHandle)
-    {
+    public ColumnMetadata getColumnMetadata(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle columnHandle) {
         InfluxColumnHandle influxColumnHandle = (InfluxColumnHandle) columnHandle;
         return new ColumnMetadata(influxColumnHandle.getName(), influxColumnHandle.getType());
     }
 
     @Override
-    public Iterator<TableColumnsMetadata> streamTableColumns(ConnectorSession session, SchemaTablePrefix prefix)
-    {
+    public Iterator<TableColumnsMetadata> streamTableColumns(ConnectorSession session, SchemaTablePrefix prefix) {
         requireNonNull(prefix, "prefix is null");
         ImmutableMap.Builder<SchemaTableName, List<ColumnMetadata>> columns = ImmutableMap.builder();
         for (SchemaTableName tableName : listTables(session, prefix.getSchema())) {
@@ -143,8 +124,7 @@ public class InfluxMetadata
     public Optional<LimitApplicationResult<ConnectorTableHandle>> applyLimit(
             ConnectorSession session,
             ConnectorTableHandle handle,
-            long limit)
-    {
+            long limit) {
         InfluxTableHandle tableHandle = (InfluxTableHandle) handle;
         // InfluxQL Limit 0 is equivalent to setting no limit
         if (limit == 0) {
@@ -168,16 +148,14 @@ public class InfluxMetadata
     public Optional<ConstraintApplicationResult<ConnectorTableHandle>> applyFilter(
             ConnectorSession session,
             ConnectorTableHandle handle,
-            Constraint constraint)
-    {
+            Constraint constraint) {
         InfluxTableHandle tableHandle = (InfluxTableHandle) handle;
         TupleDomain<ColumnHandle> oldDomain = tableHandle.getConstraint();
         TupleDomain<ColumnHandle> newDomain = oldDomain.intersect(constraint.getSummary());
         TupleDomain<ColumnHandle> remainingFilter;
         if (newDomain.isNone()) {
             remainingFilter = TupleDomain.all();
-        }
-        else {
+        } else {
             Map<ColumnHandle, Domain> domains = newDomain.getDomains().orElseThrow();
             Map<ColumnHandle, Domain> supported = new HashMap<>();
             Map<ColumnHandle, Domain> unsupported = new HashMap<>();
@@ -185,8 +163,7 @@ public class InfluxMetadata
                 if (isPushdownSupportedType(((InfluxColumnHandle) key).getType())
                         && isPushdownSupportedDomain(domain)) {
                     supported.put(key, domain);
-                }
-                else {
+                } else {
                     unsupported.put(key, domain);
                 }
             });
@@ -209,8 +186,7 @@ public class InfluxMetadata
             ConnectorSession session,
             ConnectorTableHandle handle,
             List<ConnectorExpression> projections,
-            Map<String, ColumnHandle> assignments)
-    {
+            Map<String, ColumnHandle> assignments) {
         InfluxTableHandle tableHandle = (InfluxTableHandle) handle;
         List<ColumnHandle> oldProjections = ((InfluxTableHandle) handle).getProjections();
         List<ColumnHandle> newProjections = ImmutableList.copyOf(assignments.values());
@@ -231,8 +207,24 @@ public class InfluxMetadata
                 false));
     }
 
-    private Optional<ConnectorTableMetadata> getTableMetadata(SchemaTableName schemaTableName)
-    {
+    @Override
+    public Optional<TableFunctionApplicationResult<ConnectorTableHandle>> applyTableFunction(ConnectorSession session, ConnectorTableFunctionHandle handle) {
+        if (!(handle instanceof RawQueryFunctionHandle)) {
+            return Optional.empty();
+        }
+
+        ConnectorTableHandle tableHandle = ((RawQueryFunctionHandle) handle).getTableHandle();
+        ConnectorTableSchema tableSchema = getTableSchema(session, tableHandle);
+        Map<String, ColumnHandle> columnHandlesByName = getColumnHandles(session, tableHandle);
+        List<ColumnHandle> columnHandles = tableSchema.getColumns().stream()
+                .map(ColumnSchema::getName)
+                .map(columnHandlesByName::get)
+                .collect(toImmutableList());
+
+        return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+    }
+
+    private Optional<ConnectorTableMetadata> getTableMetadata(SchemaTableName schemaTableName) {
         Optional<InfluxTableHandle> tableHandle = client.getTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName());
 
         return tableHandle.map(table -> {
@@ -246,8 +238,7 @@ public class InfluxMetadata
         });
     }
 
-    private boolean isPushdownSupportedDomain(Domain domain)
-    {
+    private boolean isPushdownSupportedDomain(Domain domain) {
         if (domain.getValues() instanceof SortedRangeSet rangeSet) {
             if (rangeSet.getOrderedRanges().isEmpty()) {
                 return false;
@@ -257,32 +248,27 @@ public class InfluxMetadata
                     isRangeSupportsBoolean(ranges) ||
                     isRangeSupportsNumber(ranges) ||
                     isRangeSupportsVarchar(ranges);
-        }
-        else if (domain.getValues() instanceof EquatableValueSet valueSet) {
+        } else if (domain.getValues() instanceof EquatableValueSet valueSet) {
             return !valueSet.getDiscreteSet().isEmpty();
         }
         return false;
     }
 
-    private static boolean isRangeSupportsVarchar(List<Range> ranges)
-    {
+    private static boolean isRangeSupportsVarchar(List<Range> ranges) {
         return ranges.stream().allMatch(range -> range.getType() == VARCHAR) &&
                 ranges.stream().anyMatch(Range::isSingleValue);
     }
 
-    private static boolean isRangeSupportsBoolean(List<Range> ranges)
-    {
+    private static boolean isRangeSupportsBoolean(List<Range> ranges) {
         return ranges.stream().allMatch(range -> range.getType() == BOOLEAN) &&
                 ranges.stream().anyMatch(Range::isSingleValue);
     }
 
-    private static boolean isRangeSupportsNumber(List<Range> ranges)
-    {
+    private static boolean isRangeSupportsNumber(List<Range> ranges) {
         return ranges.stream().allMatch(range -> range.getType() == DOUBLE || range.getType() == BIGINT);
     }
 
-    private static boolean isRangeSupportsTimestamp(List<Range> ranges)
-    {
+    private static boolean isRangeSupportsTimestamp(List<Range> ranges) {
         return ranges.stream().allMatch(range -> range.getType() instanceof TimestampType);
     }
 }

@@ -54,6 +54,10 @@ public class QueryUtils
 
     public static Query buildQueryCommand(InfluxTableHandle tableHandle, List<InfluxColumnHandle> columnHandles)
     {
+        Optional<String> query = tableHandle.getQuery();
+        if(query.isPresent()){
+           return new Query(query.get(),tableHandle.getSchemaName());
+        }
         SelectionQueryImpl selectionQuery = QueryBuilder.select();
         appendProjection(selectionQuery, tableHandle, columnHandles);
         SelectQueryImpl selectQuery = selectionQuery.from(tableHandle.getSchemaName(), wrapQuota(tableHandle.getTableName()));

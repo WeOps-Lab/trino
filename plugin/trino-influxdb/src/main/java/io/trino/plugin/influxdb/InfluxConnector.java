@@ -14,6 +14,7 @@
 
 package io.trino.plugin.influxdb;
 
+import com.google.common.collect.ImmutableSet;
 import io.airlift.bootstrap.LifeCycleManager;
 import io.trino.spi.connector.Connector;
 import io.trino.spi.connector.ConnectorMetadata;
@@ -21,61 +22,66 @@ import io.trino.spi.connector.ConnectorRecordSetProvider;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorTransactionHandle;
+import io.trino.spi.ptf.ConnectorTableFunction;
 import io.trino.spi.transaction.IsolationLevel;
 
 import javax.inject.Inject;
+
+import java.util.Set;
 
 import static io.trino.plugin.influxdb.InfluxTransactionHandle.INSTANCE;
 import static java.util.Objects.requireNonNull;
 
 public class InfluxConnector
-        implements Connector
-{
+        implements Connector {
     private final LifeCycleManager lifeCycleManager;
     private final InfluxMetadata metadata;
     private final InfluxSplitManager splitManager;
     private final InfluxRecordSetProvider recordSetProvider;
+
+    private final Set<ConnectorTableFunction> connectorTableFunctions;
 
     @Inject
     public InfluxConnector(
             LifeCycleManager lifeCycleManager,
             InfluxMetadata metadata,
             InfluxSplitManager splitManager,
-            InfluxRecordSetProvider recordSetProvider)
-    {
+            InfluxRecordSetProvider recordSetProvider,
+            Set<ConnectorTableFunction> connectorTableFunctions) {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.splitManager = requireNonNull(splitManager, "splitManager is null");
         this.recordSetProvider = requireNonNull(recordSetProvider, "recordSetProvider is null");
+        this.connectorTableFunctions = ImmutableSet.copyOf(requireNonNull(connectorTableFunctions, "connectorTableFunctions is null"));
     }
 
     @Override
-    public ConnectorTransactionHandle beginTransaction(IsolationLevel isolationLevel, boolean readOnly, boolean autoCommit)
-    {
+    public ConnectorTransactionHandle beginTransaction(IsolationLevel isolationLevel, boolean readOnly, boolean autoCommit) {
         return INSTANCE;
     }
 
     @Override
-    public ConnectorMetadata getMetadata(ConnectorSession session, ConnectorTransactionHandle transactionHandle)
-    {
+    public ConnectorMetadata getMetadata(ConnectorSession session, ConnectorTransactionHandle transactionHandle) {
         return metadata;
     }
 
     @Override
-    public ConnectorSplitManager getSplitManager()
-    {
+    public ConnectorSplitManager getSplitManager() {
         return splitManager;
     }
 
     @Override
-    public ConnectorRecordSetProvider getRecordSetProvider()
-    {
+    public ConnectorRecordSetProvider getRecordSetProvider() {
         return recordSetProvider;
     }
 
     @Override
-    public final void shutdown()
-    {
+    public final void shutdown() {
         lifeCycleManager.stop();
+    }
+
+    @Override
+    public Set<ConnectorTableFunction> getTableFunctions() {
+        return connectorTableFunctions;
     }
 }

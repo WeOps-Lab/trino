@@ -111,7 +111,7 @@ public class TestInfluxMetadata
     public void testGetTableHandle()
     {
         SchemaTableName schemaTableName = new SchemaTableName(TEST_DATABASE, TEST_MEASUREMENT_X);
-        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X);
+        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X,ImmutableList.of(), Optional.empty());
         assertEquals(metadata.getTableHandle(SESSION, schemaTableName), tableHandle);
         assertNull(metadata.getTableHandle(SESSION, new SchemaTableName(TEST_DATABASE, "unknown")));
         assertNull(metadata.getTableHandle(SESSION, new SchemaTableName("unknown", TEST_MEASUREMENT_X)));
@@ -121,7 +121,7 @@ public class TestInfluxMetadata
     @Test
     public void testGetTableMetadata()
     {
-        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X);
+        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X,ImmutableList.of(), Optional.empty());
         ConnectorTableMetadata tableMetadata = metadata.getTableMetadata(SESSION, tableHandle);
         SchemaTableName table = tableMetadata.getTable();
         List<ColumnMetadata> columns = tableMetadata.getColumns();
@@ -134,16 +134,16 @@ public class TestInfluxMetadata
                 new ColumnMetadata("f4", BOOLEAN),
                 new ColumnMetadata("country", VARCHAR)));
 
-        assertThatThrownBy(() -> metadata.getTableMetadata(SESSION, new InfluxTableHandle("unknown", "unknown")))
+        assertThatThrownBy(() -> metadata.getTableMetadata(SESSION, new InfluxTableHandle("unknown", "unknown",ImmutableList.of(), Optional.empty())))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("The table handle is invalid " + new InfluxTableHandle("unknown", "unknown"));
+                .hasMessage("The table handle is invalid " + new InfluxTableHandle("unknown", "unknown",ImmutableList.of(), Optional.empty()));
     }
 
     @Test
     public void testGetColumnHandles()
     {
         // known table
-        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X);
+        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X,ImmutableList.of(), Optional.empty());
         assertEquals(metadata.getColumnHandles(SESSION, tableHandle), ImmutableMap.of(
                 "time", new InfluxColumnHandle("time", TIMESTAMP_NANOS, ColumnKind.TIME),
                 "f1", new InfluxColumnHandle("f1", BIGINT, FIELD),
@@ -153,13 +153,13 @@ public class TestInfluxMetadata
                 "country", new InfluxColumnHandle("country", VARCHAR, TAG)));
 
         // unknown table
-        assertThatThrownBy(() -> metadata.getColumnHandles(SESSION, new InfluxTableHandle(TEST_DATABASE, "unknown")))
+        assertThatThrownBy(() -> metadata.getColumnHandles(SESSION, new InfluxTableHandle(TEST_DATABASE, "unknown",ImmutableList.of(), Optional.empty())))
                 .isInstanceOf(TableNotFoundException.class)
                 .hasMessage("Table '" + TEST_DATABASE + ".unknown' not found");
-        assertThatThrownBy(() -> metadata.getColumnHandles(SESSION, new InfluxTableHandle("unknown", TEST_MEASUREMENT_X)))
+        assertThatThrownBy(() -> metadata.getColumnHandles(SESSION, new InfluxTableHandle("unknown", TEST_MEASUREMENT_X,ImmutableList.of(), Optional.empty())))
                 .isInstanceOf(TableNotFoundException.class)
                 .hasMessage("Table '" + "unknown." + TEST_MEASUREMENT_X + "' not found");
-        assertThatThrownBy(() -> metadata.getColumnHandles(SESSION, new InfluxTableHandle("unknown", "unknown")))
+        assertThatThrownBy(() -> metadata.getColumnHandles(SESSION, new InfluxTableHandle("unknown", "unknown",ImmutableList.of(), Optional.empty())))
                 .isInstanceOf(TableNotFoundException.class)
                 .hasMessage("Table 'unknown.unknown' not found");
     }
@@ -167,7 +167,7 @@ public class TestInfluxMetadata
     @Test
     public void testGetColumnMetadata()
     {
-        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X);
+        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X,ImmutableList.of(), Optional.empty());
         InfluxColumnHandle columnHandle = new InfluxColumnHandle("country", VARCHAR, TAG);
         ColumnMetadata columnMetadata = metadata.getColumnMetadata(SESSION, tableHandle, columnHandle);
 
