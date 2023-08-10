@@ -185,7 +185,7 @@ public class NativeInfluxClient
         QueryResult tagResult = client.query(new Query(tagKeysCommand, schemaName));
 
         List<InfluxColumnHandle> columns = this.buildColumns(fieldResult, tagResult);
-        return Optional.of(new InfluxTableHandle(schemaName, tableName, columns));
+        return Optional.of(new InfluxTableHandle(schemaName, tableName, columns,Optional.empty()));
     }
 
     private List<InfluxColumnHandle> buildColumns(QueryResult fieldResult, QueryResult tagResult)

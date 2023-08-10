@@ -15,6 +15,7 @@ package io.trino.plugin.influxdb.ptf;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import io.trino.plugin.influxdb.InfluxColumnHandle;
 import io.trino.plugin.influxdb.InfluxMetadata;
@@ -82,7 +83,7 @@ public class RawQuery
             String index = ((Slice) ((ScalarArgument) arguments.get("INDEX")).getValue()).toStringUtf8();
             String query = ((Slice) ((ScalarArgument) arguments.get("QUERY")).getValue()).toStringUtf8();
 
-            InfluxTableHandle tableHandle = new InfluxTableHandle(schema, index, Optional.of(query));
+            InfluxTableHandle tableHandle = new InfluxTableHandle(schema, index,  ImmutableList.of(),Optional.of(query));
             ConnectorTableSchema tableSchema = metadata.getTableSchema(session, tableHandle);
             Map<String, ColumnHandle> columnsByName = metadata.getColumnHandles(session, tableHandle);
             List<ColumnHandle> columns = tableSchema.getColumns().stream()

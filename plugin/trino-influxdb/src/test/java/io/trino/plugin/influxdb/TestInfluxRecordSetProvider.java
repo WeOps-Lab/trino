@@ -20,6 +20,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.util.Optional;
+
 import static io.trino.plugin.influxdb.InfluxDataTool.TEST_DATABASE;
 import static io.trino.plugin.influxdb.InfluxDataTool.TEST_MEASUREMENT_X;
 import static io.trino.plugin.influxdb.InfluxTransactionHandle.INSTANCE;
@@ -64,7 +66,7 @@ public class TestInfluxRecordSetProvider
     @Test
     public void testGetRecordSet()
     {
-        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X);
+        InfluxTableHandle tableHandle = new InfluxTableHandle(TEST_DATABASE, TEST_MEASUREMENT_X, ImmutableList.of(), Optional.empty());
         InfluxRecordSetProvider provider = new InfluxRecordSetProvider(client);
         RecordSet recordSet = provider.getRecordSet(INSTANCE, SESSION, split, tableHandle, ImmutableList.of());
         InfluxRecordSet influxRecordSet = (InfluxRecordSet) recordSet;
