@@ -15,6 +15,7 @@ EOF
 
 ARCHITECTURES=(amd64 arm64 ppc64le)
 TRINO_VERSION=
+TRINO_REPO=docker-bkrepo.cwoa.net/ce1b09/weops-docker/trino
 
 while getopts ":a:h:r:" o; do
     case "${o}" in
@@ -67,7 +68,7 @@ rm "${WORK_DIR}/trino-server-${TRINO_VERSION}.tar.gz"
 cp -R bin "${WORK_DIR}/trino-server-${TRINO_VERSION}"
 cp -R default "${WORK_DIR}/"
 
-TAG_PREFIX="ccr.ccs.tencentyun.com/megalab/trino:${TRINO_VERSION}"
+TAG_PREFIX="${TRINO_REPO}:${TRINO_VERSION}"
 
 for arch in "${ARCHITECTURES[@]}"; do
     echo "🫙  Building the image for $arch"
