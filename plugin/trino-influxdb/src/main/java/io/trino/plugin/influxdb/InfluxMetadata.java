@@ -27,7 +27,7 @@ import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.ptf.ConnectorTableFunctionHandle;
 import io.trino.spi.type.TimestampType;
 
-import javax.inject.Inject;
+import com.google.inject.Inject;
 
 import java.util.HashMap;
 import java.util.Iterator;

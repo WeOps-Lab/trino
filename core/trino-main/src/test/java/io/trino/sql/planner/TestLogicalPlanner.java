@@ -67,7 +67,7 @@ import io.trino.sql.tree.QualifiedName;
 import io.trino.sql.tree.Row;
 import io.trino.sql.tree.StringLiteral;
 import io.trino.tests.QueryTemplate;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
@@ -1154,12 +1154,51 @@ public class TestLogicalPlanner
                 "SELECT * FROM nation WHERE 1 = 0",
                 output(
                         values("nationkey", "name", "regionkey", "comment")));
+    }
+
+    @Test
+    public void testRemovesNullFilter()
+    {
         assertPlan(
                 "SELECT * FROM nation WHERE null",
                 output(
                         values("nationkey", "name", "regionkey", "comment")));
         assertPlan(
+                "SELECT * FROM nation WHERE NOT null",
+                output(
+                        values("nationkey", "name", "regionkey", "comment")));
+        assertPlan(
+                "SELECT * FROM nation WHERE CAST(null AS BOOLEAN)",
+                output(
+                        values("nationkey", "name", "regionkey", "comment")));
+        assertPlan(
+                "SELECT * FROM nation WHERE NOT CAST(null AS BOOLEAN)",
+                output(
+                        values("nationkey", "name", "regionkey", "comment")));
+        assertPlan(
                 "SELECT * FROM nation WHERE nationkey = null",
+                output(
+                        values("nationkey", "name", "regionkey", "comment")));
+        assertPlan(
+                "SELECT * FROM nation WHERE nationkey = CAST(null AS BIGINT)",
+                output(
+                        values("nationkey", "name", "regionkey", "comment")));
+        assertPlan(
+                "SELECT * FROM nation WHERE nationkey < null OR nationkey > null",
+                output(
+                        values("nationkey", "name", "regionkey", "comment")));
+        assertPlan(
+                "SELECT * FROM nation WHERE nationkey = 19 AND CAST(null AS BOOLEAN)",
+                output(
+                        values("nationkey", "name", "regionkey", "comment")));
+    }
+
+    @Test
+    public void testRemovesFalseFilter()
+    {
+        // Regression test for https://github.com/trinodb/trino/issues/16515
+        assertPlan(
+                "SELECT * FROM nation WHERE CAST(name AS varchar(1)) = 'PO'",
                 output(
                         values("nationkey", "name", "regionkey", "comment")));
     }

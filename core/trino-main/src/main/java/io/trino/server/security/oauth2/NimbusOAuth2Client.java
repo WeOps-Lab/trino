@@ -15,11 +15,14 @@ package io.trino.server.security.oauth2;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Ordering;
+import com.google.inject.Inject;
 import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.jwk.source.RemoteJWKSet;
 import com.nimbusds.jose.proc.BadJOSEException;
+import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
 import com.nimbusds.jose.proc.JWSKeySelector;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
@@ -59,8 +62,6 @@ import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import io.trino.server.security.oauth2.OAuth2ServerConfigProvider.OAuth2ServerConfig;
 
-import javax.inject.Inject;
-
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.time.Instant;
@@ -93,6 +94,7 @@ public class NimbusOAuth2Client
     private final String principalField;
     private final Set<String> accessTokenAudiences;
     private final Duration maxClockSkew;
+    private final Optional<String> jwtType;
     private final NimbusHttpClient httpClient;
     private final OAuth2ServerConfigProvider serverConfigurationProvider;
     private volatile boolean loaded;
@@ -112,6 +114,7 @@ public class NimbusOAuth2Client
         scope = Scope.parse(oauthConfig.getScopes());
         principalField = oauthConfig.getPrincipalField();
         maxClockSkew = oauthConfig.getMaxClockSkew();
+        jwtType = oauthConfig.getJwtType();
 
         accessTokenAudiences = new HashSet<>(oauthConfig.getAdditionalAudiences());
         accessTokenAudiences.add(clientId.getValue());
@@ -138,6 +141,9 @@ public class NimbusOAuth2Client
         }
 
         DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
+        if (jwtType.isPresent()) {
+            processor.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>(new JOSEObjectType(jwtType.get())));
+        }
         processor.setJWSKeySelector(jwsKeySelector);
         DefaultJWTClaimsVerifier<SecurityContext> accessTokenVerifier = new DefaultJWTClaimsVerifier<>(
                 accessTokenAudiences,
@@ -360,7 +366,7 @@ public class NimbusOAuth2Client
     {
         T tokenResponse = httpClient.execute(tokenRequest, parser);
         if (!tokenResponse.indicatesSuccess()) {
-            throw new ChallengeFailedException("Error while fetching access token: " + tokenResponse.toErrorResponse().toJSONObject());
+            throw new ChallengeFailedException("Error while fetching access token: " + tokenResponse.toErrorResponse().toHTTPResponse().getContent());
         }
         return tokenResponse;
     }

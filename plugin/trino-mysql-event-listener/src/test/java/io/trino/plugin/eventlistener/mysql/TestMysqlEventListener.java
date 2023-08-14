@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.reflect.TypeToken;
 import io.airlift.json.JsonCodecFactory;
 import io.trino.spi.TrinoWarning;
+import io.trino.spi.connector.CatalogHandle.CatalogVersion;
 import io.trino.spi.connector.StandardWarningCode;
 import io.trino.spi.eventlistener.ColumnDetail;
 import io.trino.spi.eventlistener.EventListener;
@@ -89,6 +90,7 @@ public class TestMysqlEventListener
             Optional.of(ofMillis(107)),
             Optional.of(ofMillis(108)),
             Optional.of(ofMillis(109)),
+            Optional.of(ofMillis(1091)),
             Optional.of(ofMillis(110)),
             Optional.of(ofMillis(111)),
             Optional.of(ofMillis(112)),
@@ -156,6 +158,7 @@ public class TestMysqlEventListener
             List.of(
                     new QueryInputMetadata(
                             "catalog1",
+                            new CatalogVersion("default"),
                             "schema1",
                             "table1",
                             List.of("column1", "column2"),
@@ -165,6 +168,7 @@ public class TestMysqlEventListener
                             OptionalLong.of(202)),
                     new QueryInputMetadata(
                             "catalog2",
+                            new CatalogVersion("default"),
                             "schema2",
                             "table2",
                             List.of("column3", "column4"),
@@ -174,6 +178,7 @@ public class TestMysqlEventListener
                             OptionalLong.of(204))),
             Optional.of(new QueryOutputMetadata(
                     "catalog3",
+                    new CatalogVersion("default"),
                     "schema3",
                     "table3",
                     Optional.of(List.of(
@@ -234,6 +239,7 @@ public class TestMysqlEventListener
             ofMillis(102),
             ofMillis(103),
             ofMillis(104),
+            Optional.empty(),
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
@@ -403,6 +409,7 @@ public class TestMysqlEventListener
                     assertEquals(resultSet.getLong("waiting_time_millis"), 107);
                     assertEquals(resultSet.getLong("analysis_time_millis"), 108);
                     assertEquals(resultSet.getLong("planning_time_millis"), 109);
+                    assertEquals(resultSet.getLong("planning_cpu_time_millis"), 1091);
                     assertEquals(resultSet.getLong("execution_time_millis"), 110);
                     assertEquals(resultSet.getLong("input_blocked_time_millis"), 111);
                     assertEquals(resultSet.getLong("failed_input_blocked_time_millis"), 112);

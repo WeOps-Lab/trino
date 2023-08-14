@@ -14,18 +14,28 @@
 package io.trino.sql;
 
 import com.google.common.collect.ImmutableList;
+import io.trino.sql.tree.AllColumns;
 import io.trino.sql.tree.ColumnDefinition;
 import io.trino.sql.tree.CreateTable;
+import io.trino.sql.tree.CreateTableAsSelect;
+import io.trino.sql.tree.ExecuteImmediate;
 import io.trino.sql.tree.GenericDataType;
 import io.trino.sql.tree.Identifier;
+import io.trino.sql.tree.LongLiteral;
 import io.trino.sql.tree.NodeLocation;
 import io.trino.sql.tree.QualifiedName;
+import io.trino.sql.tree.Query;
+import io.trino.sql.tree.StringLiteral;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 import java.util.function.BiFunction;
 
+import static io.trino.sql.QueryUtil.selectList;
+import static io.trino.sql.QueryUtil.simpleQuery;
+import static io.trino.sql.QueryUtil.table;
 import static io.trino.sql.SqlFormatter.formatSql;
+import static io.trino.sql.tree.SaveMode.FAIL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestSqlFormatter
@@ -62,12 +72,12 @@ public class TestSqlFormatter
             return new CreateTable(
                     QualifiedName.of(ImmutableList.of(new Identifier(tableName, false))),
                     ImmutableList.of(new ColumnDefinition(
-                            new Identifier(columnName, false),
+                            QualifiedName.of(columnName),
                             new GenericDataType(location, type, ImmutableList.of()),
                             true,
                             ImmutableList.of(),
                             Optional.empty())),
-                    false,
+                    FAIL,
                     ImmutableList.of(),
                     Optional.empty());
         };
@@ -77,5 +87,44 @@ public class TestSqlFormatter
                 .isEqualTo(String.format(createTableSql, "table_name", "column_name"));
         assertThat(formatSql(createTable.apply("exists", "exists")))
                 .isEqualTo(String.format(createTableSql, "\"exists\"", "\"exists\""));
+    }
+
+    @Test
+    public void testCreateTableAsSelect()
+    {
+        BiFunction<String, String, CreateTableAsSelect> createTableAsSelect = (tableName, columnName) -> {
+            Query query = simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t")));
+            return new CreateTableAsSelect(
+                    QualifiedName.of(ImmutableList.of(new Identifier(tableName, false))),
+                    query,
+                    FAIL,
+                    ImmutableList.of(),
+                    true,
+                    Optional.of(ImmutableList.of(new Identifier(columnName, false))),
+                    Optional.empty());
+        };
+        String createTableSql = "CREATE TABLE %s( %s ) AS SELECT *\nFROM\n  t\n";
+
+        assertThat(formatSql(createTableAsSelect.apply("table_name", "column_name")))
+                .isEqualTo(String.format(createTableSql, "table_name", "column_name"));
+        assertThat(formatSql(createTableAsSelect.apply("exists", "exists")))
+                .isEqualTo(String.format(createTableSql, "\"exists\"", "\"exists\""));
+    }
+
+    @Test
+    public void testExecuteImmediate()
+    {
+        assertThat(formatSql(
+                new ExecuteImmediate(
+                        new NodeLocation(1, 1),
+                        new StringLiteral(new NodeLocation(1, 19), "SELECT * FROM foo WHERE col1 = ? AND col2 = ?"),
+                        ImmutableList.of(new LongLiteral("42"), new StringLiteral("bar")))))
+                .isEqualTo("EXECUTE IMMEDIATE\n'SELECT * FROM foo WHERE col1 = ? AND col2 = ?'\nUSING 42, 'bar'");
+        assertThat(formatSql(
+                new ExecuteImmediate(
+                        new NodeLocation(1, 1),
+                        new StringLiteral(new NodeLocation(1, 19), "SELECT * FROM foo WHERE col1 = 'bar'"),
+                        ImmutableList.of())))
+                .isEqualTo("EXECUTE IMMEDIATE\n'SELECT * FROM foo WHERE col1 = ''bar'''");
     }
 }

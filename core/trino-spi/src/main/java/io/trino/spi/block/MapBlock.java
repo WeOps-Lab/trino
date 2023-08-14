@@ -15,8 +15,7 @@
 package io.trino.spi.block;
 
 import io.trino.spi.type.MapType;
-
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 
 import java.util.Optional;
 import java.util.function.ObjLongConsumer;
@@ -59,9 +58,18 @@ public class MapBlock
             Block valueBlock,
             MapType mapType)
     {
-        validateConstructorArguments(mapType, 0, offsets.length - 1, mapIsNull.orElse(null), offsets, keyBlock, valueBlock);
+        return fromKeyValueBlock(mapIsNull, offsets, offsets.length - 1, keyBlock, valueBlock, mapType);
+    }
 
-        int mapCount = offsets.length - 1;
+    public static MapBlock fromKeyValueBlock(
+            Optional<boolean[]> mapIsNull,
+            int[] offsets,
+            int mapCount,
+            Block keyBlock,
+            Block valueBlock,
+            MapType mapType)
+    {
+        validateConstructorArguments(mapType, 0, mapCount, mapIsNull.orElse(null), offsets, keyBlock, valueBlock);
 
         return createMapBlockInternal(
                 mapType,

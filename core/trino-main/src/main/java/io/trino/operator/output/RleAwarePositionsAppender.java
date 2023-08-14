@@ -17,8 +17,7 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.RunLengthEncodedBlock;
 import io.trino.type.BlockTypeOperators.BlockPositionIsDistinctFrom;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-
-import javax.annotation.Nullable;
+import jakarta.annotation.Nullable;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.slice.SizeOf.instanceSize;
@@ -52,9 +51,9 @@ public class RleAwarePositionsAppender
     @Override
     public void append(IntArrayList positions, Block source)
     {
-        // RleAwarePositionsAppender should be used with FlatteningPositionsAppender that makes sure
+        // RleAwarePositionsAppender should be used with UnnestingPositionsAppender that makes sure
         // append is called only with flat block
-        checkArgument(!(source instanceof RunLengthEncodedBlock));
+        checkArgument(!(source instanceof RunLengthEncodedBlock), "Append should be called with non-RLE block but got %s", source);
         switchToFlat();
         delegate.append(positions, source);
     }

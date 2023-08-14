@@ -14,10 +14,13 @@
 package io.trino.plugin.deltalake.procedure;
 
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
+import com.google.inject.Provider;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import io.trino.filesystem.FileEntry;
 import io.trino.filesystem.FileIterator;
+import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.CatalogName;
@@ -28,6 +31,7 @@ import io.trino.plugin.deltalake.DeltaLakeSessionProperties;
 import io.trino.plugin.deltalake.DeltaLakeTableHandle;
 import io.trino.plugin.deltalake.transactionlog.AddFileEntry;
 import io.trino.plugin.deltalake.transactionlog.DeltaLakeTransactionLogEntry;
+import io.trino.plugin.deltalake.transactionlog.ProtocolEntry;
 import io.trino.plugin.deltalake.transactionlog.RemoveFileEntry;
 import io.trino.plugin.deltalake.transactionlog.TableSnapshot;
 import io.trino.plugin.deltalake.transactionlog.TransactionLogAccess;
@@ -39,9 +43,6 @@ import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.procedure.Procedure.Argument;
-
-import javax.inject.Inject;
-import javax.inject.Provider;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandle;
@@ -56,10 +57,12 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static io.trino.plugin.base.util.Procedures.checkProcedureArgument;
+import static io.trino.plugin.deltalake.DeltaLakeMetadata.MAX_WRITER_VERSION;
 import static io.trino.plugin.deltalake.DeltaLakeMetadata.checkValidTableHandle;
 import static io.trino.plugin.deltalake.DeltaLakeSessionProperties.getVacuumMinRetention;
 import static io.trino.plugin.deltalake.transactionlog.TransactionLogUtil.TRANSACTION_LOG_DIRECTORY;
 import static io.trino.plugin.deltalake.transactionlog.TransactionLogUtil.getTransactionLogDir;
+import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.String.format;
 import static java.lang.invoke.MethodHandles.lookup;
@@ -172,10 +175,15 @@ public class VacuumProcedure
         accessControl.checkCanDeleteFromTable(null, tableName);
 
         TableSnapshot tableSnapshot = transactionLogAccess.loadSnapshot(tableName, handle.getLocation(), session);
+        // TODO https://github.com/trinodb/trino/issues/15873 Check writer features when supporting writer version 7
+        ProtocolEntry protocolEntry = transactionLogAccess.getProtocolEntry(session, tableSnapshot);
+        if (protocolEntry.getMinWriterVersion() > MAX_WRITER_VERSION) {
+            throw new TrinoException(NOT_SUPPORTED, "Cannot execute vacuum procedure with %d writer version".formatted(protocolEntry.getMinWriterVersion()));
+        }
         String tableLocation = tableSnapshot.getTableLocation();
         String transactionLogDir = getTransactionLogDir(tableLocation);
         TrinoFileSystem fileSystem = fileSystemFactory.create(session);
-        String commonPathPrefix = tableLocation + "/";
+        String commonPathPrefix = tableLocation.endsWith("/") ? tableLocation : tableLocation + "/";
         String queryId = session.getQueryId();
 
         // Retain all active files and every file removed by a "recent" transaction (except for the oldest "recent").
@@ -213,11 +221,11 @@ public class VacuumProcedure
         long retainedUnknownFiles = 0;
         long removedFiles = 0;
 
-        List<String> filesToDelete = new ArrayList<>();
-        FileIterator listing = fileSystem.listFiles(tableLocation);
+        List<Location> filesToDelete = new ArrayList<>();
+        FileIterator listing = fileSystem.listFiles(Location.of(tableLocation));
         while (listing.hasNext()) {
             FileEntry entry = listing.next();
-            String location = entry.location();
+            String location = entry.location().toString();
             checkState(
                     location.startsWith(commonPathPrefix),
                     "Unexpected path [%s] returned when listing files under [%s]",
@@ -253,7 +261,7 @@ public class VacuumProcedure
             }
 
             log.debug("[%s] deleting file [%s] with modification time %s", queryId, location, modificationTime);
-            filesToDelete.add(location);
+            filesToDelete.add(entry.location());
             if (filesToDelete.size() == DELETE_BATCH_SIZE) {
                 fileSystem.deleteFiles(filesToDelete);
                 removedFiles += filesToDelete.size();

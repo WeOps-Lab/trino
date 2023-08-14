@@ -14,6 +14,7 @@
 package io.trino.tests.product.launcher.env.environment;
 
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
 import io.trino.tests.product.launcher.docker.DockerFiles;
 import io.trino.tests.product.launcher.env.DockerContainer;
 import io.trino.tests.product.launcher.env.Environment;
@@ -24,8 +25,6 @@ import io.trino.tests.product.launcher.env.common.Minio;
 import io.trino.tests.product.launcher.env.common.Standard;
 import io.trino.tests.product.launcher.env.common.TestsEnvironment;
 import io.trino.tests.product.launcher.testcontainers.PortBinder;
-
-import javax.inject.Inject;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -57,7 +56,7 @@ public class EnvSinglenodeHudi
     private static final int SPARK_THRIFT_PORT = 10213;
 
     private static final String SPARK_CONTAINER_NAME = "spark";
-    private static final String S3_BUCKET_NAME = "trino-ci-test";
+    private static final String S3_BUCKET_NAME = "test-bucket";
 
     private final PortBinder portBinder;
     private final String hadoopImagesVersion;
@@ -102,7 +101,7 @@ public class EnvSinglenodeHudi
         FileAttribute<Set<PosixFilePermission>> posixFilePermissions = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-r--r--"));
         Path minioBucketDirectory;
         try {
-            minioBucketDirectory = Files.createTempDirectory("trino-ci-test", posixFilePermissions);
+            minioBucketDirectory = Files.createTempDirectory("test-bucket-contents", posixFilePermissions);
             minioBucketDirectory.toFile().deleteOnExit();
         }
         catch (IOException e) {

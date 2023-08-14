@@ -25,7 +25,7 @@ import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.ptf.ConnectorTableFunction;
 import io.trino.spi.transaction.IsolationLevel;
 
-import javax.inject.Inject;
+import com.google.inject.Inject;
 
 import java.util.Set;
 

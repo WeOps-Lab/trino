@@ -19,6 +19,10 @@ public final class Locations
 {
     private Locations() {}
 
+    /**
+     * @deprecated use {@link Location#appendPath(String)} instead
+     */
+    @Deprecated
     public static String appendPath(String location, String path)
     {
         validateLocation(location);
@@ -29,6 +33,10 @@ public final class Locations
         return location + path;
     }
 
+    /**
+     * @deprecated use {@link Location#parentDirectory()} instead
+     */
+    @Deprecated
     public static String getParent(String location)
     {
         validateLocation(location);
@@ -43,6 +51,10 @@ public final class Locations
         throw new IllegalArgumentException("Location does not have parent: " + location);
     }
 
+    /**
+     * @deprecated use {@link Location#fileName()} instead
+     */
+    @Deprecated
     public static String getFileName(String location)
     {
         validateLocation(location);
@@ -54,5 +66,14 @@ public final class Locations
     {
         checkArgument(location.indexOf('?') < 0, "location contains a query string: %s", location);
         checkArgument(location.indexOf('#') < 0, "location contains a fragment: %s", location);
+    }
+
+    /**
+     * Verifies whether the two provided directory location parameters point to the same actual location.
+     */
+    public static boolean areDirectoryLocationsEquivalent(Location leftLocation, Location rightLocation)
+    {
+        return leftLocation.equals(rightLocation) ||
+                leftLocation.removeOneTrailingSlash().equals(rightLocation.removeOneTrailingSlash());
     }
 }

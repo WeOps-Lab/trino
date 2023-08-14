@@ -43,6 +43,7 @@ import io.trino.spi.ErrorType;
 import io.trino.spi.Plugin;
 import io.trino.spi.QueryId;
 import io.trino.spi.eventlistener.EventListener;
+import io.trino.spi.eventlistener.QueryCompletedEvent;
 import io.trino.spi.exchange.ExchangeManager;
 import io.trino.spi.security.SystemAccessControl;
 import io.trino.spi.type.TypeManager;
@@ -51,6 +52,7 @@ import io.trino.split.SplitManager;
 import io.trino.sql.analyzer.QueryExplainer;
 import io.trino.sql.planner.NodePartitioningManager;
 import io.trino.sql.planner.Plan;
+import io.trino.testing.containers.OpenTracingCollector;
 import io.trino.transaction.TransactionManager;
 import org.intellij.lang.annotations.Language;
 
@@ -69,6 +71,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Throwables.throwIfUnchecked;
 import static com.google.inject.util.Modules.EMPTY_MODULE;
@@ -77,6 +80,8 @@ import static io.airlift.log.Level.ERROR;
 import static io.airlift.log.Level.WARN;
 import static io.airlift.testing.Closeables.closeAllSuppress;
 import static io.airlift.units.Duration.nanosSince;
+import static java.lang.Boolean.parseBoolean;
+import static java.lang.System.getenv;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -118,14 +123,11 @@ public class DistributedQueryRunner
             Module additionalModule,
             Optional<Path> baseDataDir,
             List<SystemAccessControl> systemAccessControls,
-            List<EventListener> eventListeners)
+            List<EventListener> eventListeners,
+            List<AutoCloseable> extraCloseables)
             throws Exception
     {
         requireNonNull(defaultSession, "defaultSession is null");
-
-        if (backupCoordinatorProperties.isPresent()) {
-            checkArgument(nodeCount >= 2, "the nodeCount must be greater than or equal to two!");
-        }
 
         setupLogging();
 
@@ -133,11 +135,14 @@ public class DistributedQueryRunner
             long start = System.nanoTime();
             discoveryServer = new TestingDiscoveryServer(environment);
             closer.register(() -> closeUnchecked(discoveryServer));
+            closer.register(() -> extraCloseables.forEach(DistributedQueryRunner::closeUnchecked));
             log.info("Created TestingDiscoveryServer in %s", nanosSince(start).convertToMostSuccinctTimeUnit());
 
             registerNewWorker = () -> createServer(false, extraProperties, environment, additionalModule, baseDataDir, ImmutableList.of(), ImmutableList.of());
 
-            for (int i = backupCoordinatorProperties.isEmpty() ? 1 : 2; i < nodeCount; i++) {
+            int coordinatorCount = backupCoordinatorProperties.isEmpty() ? 1 : 2;
+            checkArgument(nodeCount >= coordinatorCount, "nodeCount includes coordinator(s) count, so must be at least %s, got: %s", coordinatorCount, nodeCount);
+            for (int i = coordinatorCount; i < nodeCount; i++) {
                 registerNewWorker.run();
             }
 
@@ -616,7 +621,7 @@ public class DistributedQueryRunner
     {
         private Session defaultSession;
         private int nodeCount = 3;
-        private Map<String, String> extraProperties = new HashMap<>();
+        private Map<String, String> extraProperties = ImmutableMap.of();
         private Map<String, String> coordinatorProperties = ImmutableMap.of();
         private Optional<Map<String, String>> backupCoordinatorProperties = Optional.empty();
         private Consumer<QueryRunner> additionalSetup = queryRunner -> {};
@@ -625,6 +630,7 @@ public class DistributedQueryRunner
         private Optional<Path> baseDataDir = Optional.empty();
         private List<SystemAccessControl> systemAccessControls = ImmutableList.of();
         private List<EventListener> eventListeners = ImmutableList.of();
+        private List<AutoCloseable> extraCloseables = ImmutableList.of();
 
         protected Builder(Session defaultSession)
         {
@@ -649,21 +655,42 @@ public class DistributedQueryRunner
         @CanIgnoreReturnValue
         public SELF setExtraProperties(Map<String, String> extraProperties)
         {
-            this.extraProperties = new HashMap<>(extraProperties);
+            this.extraProperties = ImmutableMap.copyOf(extraProperties);
+            return self();
+        }
+
+        @CanIgnoreReturnValue
+        public SELF addExtraProperties(Map<String, String> extraProperties)
+        {
+            this.extraProperties = addProperties(this.extraProperties, extraProperties);
             return self();
         }
 
         @CanIgnoreReturnValue
         public SELF addExtraProperty(String key, String value)
         {
-            this.extraProperties.put(key, value);
+            this.extraProperties = addProperty(this.extraProperties, key, value);
             return self();
         }
 
         @CanIgnoreReturnValue
         public SELF setCoordinatorProperties(Map<String, String> coordinatorProperties)
         {
-            this.coordinatorProperties = coordinatorProperties;
+            this.coordinatorProperties = ImmutableMap.copyOf(coordinatorProperties);
+            return self();
+        }
+
+        @CanIgnoreReturnValue
+        public SELF addCoordinatorProperties(Map<String, String> coordinatorProperties)
+        {
+            this.coordinatorProperties = addProperties(this.coordinatorProperties, coordinatorProperties);
+            return self();
+        }
+
+        @CanIgnoreReturnValue
+        public SELF addCoordinatorProperty(String key, String value)
+        {
+            this.coordinatorProperties = addProperty(this.coordinatorProperties, key, value);
             return self();
         }
 
@@ -684,17 +711,6 @@ public class DistributedQueryRunner
         {
             this.additionalSetup = requireNonNull(additionalSetup, "additionalSetup is null");
             return self();
-        }
-
-        /**
-         * Sets coordinator properties being equal to a map containing given key and value.
-         * Note, that calling this method OVERWRITES previously set property values.
-         * As a result, it should only be used when only one coordinator property needs to be set.
-         */
-        @CanIgnoreReturnValue
-        public SELF setSingleCoordinatorProperty(String key, String value)
-        {
-            return setCoordinatorProperties(ImmutableMap.of(key, value));
         }
 
         @CanIgnoreReturnValue
@@ -757,6 +773,24 @@ public class DistributedQueryRunner
             return self();
         }
 
+        public SELF withTracing()
+        {
+            OpenTracingCollector collector = new OpenTracingCollector();
+            collector.start();
+            extraCloseables = ImmutableList.of(collector);
+            this.addExtraProperties(Map.of("tracing.enabled", "true", "tracing.exporter.endpoint", collector.getExporterEndpoint().toString()));
+            this.setEventListener(new EventListener()
+            {
+                @Override
+                public void queryCompleted(QueryCompletedEvent queryCompletedEvent)
+                {
+                    String queryId = queryCompletedEvent.getMetadata().getQueryId();
+                    log.info("TRACING: %s :: %s", queryId, collector.searchForQueryId(queryId));
+                }
+            });
+            return self();
+        }
+
         @SuppressWarnings("unchecked")
         protected SELF self()
         {
@@ -766,6 +800,11 @@ public class DistributedQueryRunner
         public DistributedQueryRunner build()
                 throws Exception
         {
+            String tracingEnabled = firstNonNull(getenv("TRACING"), "false");
+            if (parseBoolean(tracingEnabled) || tracingEnabled.equals("1")) {
+                withTracing();
+            }
+
             DistributedQueryRunner queryRunner = new DistributedQueryRunner(
                     defaultSession,
                     nodeCount,
@@ -776,7 +815,8 @@ public class DistributedQueryRunner
                     additionalModule,
                     baseDataDir,
                     systemAccessControls,
-                    eventListeners);
+                    eventListeners,
+                    extraCloseables);
 
             try {
                 additionalSetup.accept(queryRunner);
@@ -787,6 +827,22 @@ public class DistributedQueryRunner
             }
 
             return queryRunner;
+        }
+
+        protected static Map<String, String> addProperties(Map<String, String> properties, Map<String, String> update)
+        {
+            return ImmutableMap.<String, String>builder()
+                    .putAll(requireNonNull(properties, "properties is null"))
+                    .putAll(requireNonNull(update, "update is null"))
+                    .buildOrThrow();
+        }
+
+        protected static ImmutableMap<String, String> addProperty(Map<String, String> extraProperties, String key, String value)
+        {
+            return ImmutableMap.<String, String>builder()
+                    .putAll(requireNonNull(extraProperties, "properties is null"))
+                    .put(requireNonNull(key, "key is null"), requireNonNull(value, "value is null"))
+                    .buildOrThrow();
         }
     }
 }

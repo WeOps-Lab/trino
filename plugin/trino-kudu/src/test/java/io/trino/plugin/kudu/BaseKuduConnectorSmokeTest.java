@@ -16,7 +16,6 @@ package io.trino.plugin.kudu;
 import io.trino.testing.BaseConnectorSmokeTest;
 import io.trino.testing.QueryRunner;
 import io.trino.testing.TestingConnectorBehavior;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
 import java.util.Optional;
@@ -24,14 +23,13 @@ import java.util.Optional;
 import static io.trino.plugin.kudu.KuduQueryRunnerFactory.createKuduQueryRunnerTpch;
 import static io.trino.plugin.kudu.TestKuduConnectorTest.REGION_COLUMNS;
 import static io.trino.plugin.kudu.TestKuduConnectorTest.createKuduTableForWrites;
+import static io.trino.plugin.kudu.TestingKuduServer.EARLIEST_TAG;
 import static io.trino.testing.TestingNames.randomNameSuffix;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public abstract class BaseKuduConnectorSmokeTest
         extends BaseConnectorSmokeTest
 {
-    private TestingKuduServer kuduServer;
-
     protected abstract String getKuduServerVersion();
 
     protected abstract Optional<String> getKuduSchemaEmulationPrefix();
@@ -40,15 +38,9 @@ public abstract class BaseKuduConnectorSmokeTest
     protected QueryRunner createQueryRunner()
             throws Exception
     {
-        kuduServer = new TestingKuduServer(getKuduServerVersion());
-        return createKuduQueryRunnerTpch(kuduServer, getKuduSchemaEmulationPrefix(), REQUIRED_TPCH_TABLES);
-    }
-
-    @AfterClass(alwaysRun = true)
-    public void tearDown()
-    {
-        kuduServer.close();
-        kuduServer = null;
+        return createKuduQueryRunnerTpch(
+                closeAfterClass(new TestingKuduServer(getKuduServerVersion())),
+                getKuduSchemaEmulationPrefix(), REQUIRED_TPCH_TABLES);
     }
 
     @SuppressWarnings("DuplicateBranchesInSwitch")
@@ -56,25 +48,25 @@ public abstract class BaseKuduConnectorSmokeTest
     protected boolean hasBehavior(TestingConnectorBehavior connectorBehavior)
     {
         switch (connectorBehavior) {
+            case SUPPORTS_TRUNCATE:
+                return false;
+
             case SUPPORTS_TOPN_PUSHDOWN:
                 return false;
 
             case SUPPORTS_RENAME_SCHEMA:
                 return false;
 
-            case SUPPORTS_CREATE_TABLE_WITH_TABLE_COMMENT:
-                return false;
-
             case SUPPORTS_COMMENT_ON_TABLE:
             case SUPPORTS_COMMENT_ON_COLUMN:
                 return false;
 
-            case SUPPORTS_NOT_NULL_CONSTRAINT:
+            case SUPPORTS_CREATE_VIEW:
+            case SUPPORTS_CREATE_MATERIALIZED_VIEW:
                 return false;
 
-            case SUPPORTS_DELETE:
-            case SUPPORTS_MERGE:
-                return true;
+            case SUPPORTS_NOT_NULL_CONSTRAINT:
+                return false;
 
             case SUPPORTS_ARRAY:
             case SUPPORTS_ROW_TYPE:
@@ -154,6 +146,20 @@ public abstract class BaseKuduConnectorSmokeTest
         assertUpdate("UPDATE " + tableName + " SET b = b + 1.2 WHERE a % 2 = 0", 3);
         assertThat(query("SELECT a, b FROM " + tableName))
                 .matches(expectedValues("(0, 1.2), (1, 2.5), (2, 6.2), (3, 7.5), (4, 11.2)"));
+        assertUpdate("DROP TABLE " + tableName);
+    }
+
+    @Test
+    public void testCreateTableWithTableComment()
+    {
+        String tableName = "test_create_" + randomNameSuffix();
+
+        assertUpdate("CREATE TABLE " + tableName + " (a bigint WITH (primary_key=true)) COMMENT 'test comment' WITH (partition_by_hash_columns = ARRAY['a'], partition_by_hash_buckets = 2)");
+
+        // Kudu versions < 1.15.0 ignore a table comment
+        String expected = getKuduServerVersion().equals(EARLIEST_TAG) ? null : "test comment";
+        assertThat(getTableComment(tableName)).isEqualTo(expected);
+
         assertUpdate("DROP TABLE " + tableName);
     }
 }

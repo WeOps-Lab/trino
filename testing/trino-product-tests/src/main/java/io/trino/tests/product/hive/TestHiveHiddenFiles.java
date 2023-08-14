@@ -17,7 +17,6 @@ import com.google.inject.Inject;
 import io.trino.tempto.ProductTest;
 import io.trino.tempto.assertions.QueryAssert;
 import io.trino.tempto.hadoop.hdfs.HdfsClient;
-import org.assertj.core.api.Assertions;
 import org.testng.annotations.Test;
 
 import java.io.ByteArrayInputStream;
@@ -26,11 +25,11 @@ import java.io.IOException;
 import java.util.List;
 
 import static io.trino.tempto.assertions.QueryAssert.Row.row;
-import static io.trino.tempto.assertions.QueryAssert.assertThat;
 import static io.trino.testing.TestingNames.randomNameSuffix;
 import static io.trino.tests.product.hive.util.TableLocationUtils.getTablePath;
 import static io.trino.tests.product.utils.QueryExecutors.onHive;
 import static io.trino.tests.product.utils.QueryExecutors.onTrino;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestHiveHiddenFiles
         extends ProductTest
@@ -55,7 +54,7 @@ public class TestHiveHiddenFiles
         String tableLocation = getTablePath(tableName);
         // Rename the table files to Hive hidden tableFiles (prefixed by `.` or `_` characters)
         List<String> tableFiles = hdfsClient.listDirectory(tableLocation);
-        Assertions.assertThat(tableFiles).hasSize(2);
+        assertThat(tableFiles).hasSize(2);
         renameFile(tableLocation, tableFiles.get(0), '.' + tableFiles.get(0));
         renameFile(tableLocation, tableFiles.get(1), '_' + tableFiles.get(1));
 

@@ -20,14 +20,11 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.parquet.hadoop.ParquetOutputFormat;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static org.apache.hadoop.hive.conf.HiveConf.ConfVars.COMPRESSRESULT;
 import static org.apache.hadoop.io.SequenceFile.CompressionType.BLOCK;
 
 public final class CompressionConfigUtil
 {
-    private static final String COMPRESSION_CONFIGURED_MARKER = "trino.compression.configured";
-
     private CompressionConfigUtil() {}
 
     public static void configureCompression(Configuration config, HiveCompressionCodec compressionCodec)
@@ -54,17 +51,9 @@ public final class CompressionConfigUtil
         config.set(ParquetOutputFormat.COMPRESSION, compressionCodec.getParquetCompressionCodec().name());
 
         // For Avro
-        compressionCodec.getAvroCompressionCodec().ifPresent(codec -> config.set(AvroJob.OUTPUT_CODEC, codec));
+        compressionCodec.getAvroCompressionKind().ifPresent(kind -> config.set(AvroJob.OUTPUT_CODEC, kind.toString()));
 
         // For SequenceFile
         config.set(FileOutputFormat.COMPRESS_TYPE, BLOCK.toString());
-
-        config.set(COMPRESSION_CONFIGURED_MARKER, "true");
-    }
-
-    public static void assertCompressionConfigured(Configuration config)
-    {
-        String markerValue = config.get(COMPRESSION_CONFIGURED_MARKER);
-        checkArgument("true".equals(markerValue), "Compression should have been configured");
     }
 }

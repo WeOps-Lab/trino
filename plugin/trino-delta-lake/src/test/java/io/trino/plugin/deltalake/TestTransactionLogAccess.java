@@ -70,6 +70,8 @@ import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.ex
 import static io.trino.plugin.deltalake.transactionlog.TransactionLogParser.LAST_CHECKPOINT_FILENAME;
 import static io.trino.plugin.deltalake.transactionlog.TransactionLogUtil.TRANSACTION_LOG_DIRECTORY;
 import static io.trino.plugin.hive.HiveTestUtils.HDFS_ENVIRONMENT;
+import static io.trino.plugin.hive.HiveTestUtils.HDFS_FILE_SYSTEM_STATS;
+import static io.trino.plugin.hive.util.MultisetAssertions.assertMultisetsEqual;
 import static io.trino.spi.type.TimeZoneKey.UTC_KEY;
 import static io.trino.testing.TestingConnectorSession.SESSION;
 import static io.trino.type.InternalTypeManager.TESTING_TYPE_MANAGER;
@@ -108,7 +110,7 @@ public class TestTransactionLogAccess
             new RemoveFileEntry("age=42/part-00000-6aed618a-2beb-4edd-8466-653e67a9b380.c000.snappy.parquet", 1579190155406L, false),
             new RemoveFileEntry("age=42/part-00000-b82d8859-84a0-4f05-872c-206b07dd54f0.c000.snappy.parquet", 1579190163932L, false));
 
-    private final TrackingFileSystemFactory trackingFileSystemFactory = new TrackingFileSystemFactory(new HdfsFileSystemFactory(HDFS_ENVIRONMENT));
+    private final TrackingFileSystemFactory trackingFileSystemFactory = new TrackingFileSystemFactory(new HdfsFileSystemFactory(HDFS_ENVIRONMENT, HDFS_FILE_SYSTEM_STATS));
 
     private TransactionLogAccess transactionLogAccess;
     private TableSnapshot tableSnapshot;
@@ -144,6 +146,7 @@ public class TestTransactionLogAccess
         DeltaLakeTableHandle tableHandle = new DeltaLakeTableHandle(
                 "schema",
                 tableName,
+                true,
                 "location",
                 new MetadataEntry("id", "test", "description", null, "", ImmutableList.of(), ImmutableMap.of(), 0),
                 TupleDomain.none(),
@@ -153,8 +156,7 @@ public class TestTransactionLogAccess
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                0,
-                false);
+                0);
 
         tableSnapshot = transactionLogAccess.loadSnapshot(tableHandle.getSchemaTableName(), tableLocation, SESSION);
     }
@@ -619,10 +621,10 @@ public class TestTransactionLogAccess
             assertTrue(actual.getStats().isPresent());
 
             for (ColumnMetadata column : columns) {
-                DeltaLakeColumnHandle columnHandle = new DeltaLakeColumnHandle(column.getName(), column.getType(), OptionalInt.empty(), column.getName(), column.getType(), REGULAR);
+                DeltaLakeColumnHandle columnHandle = new DeltaLakeColumnHandle(column.getName(), column.getType(), OptionalInt.empty(), column.getName(), column.getType(), REGULAR, Optional.empty());
                 assertEquals(expected.getStats().get().getMinColumnValue(columnHandle), actual.getStats().get().getMinColumnValue(columnHandle));
                 assertEquals(expected.getStats().get().getMaxColumnValue(columnHandle), actual.getStats().get().getMaxColumnValue(columnHandle));
-                assertEquals(expected.getStats().get().getNullCount(columnHandle.getName()), actual.getStats().get().getNullCount(columnHandle.getName()));
+                assertEquals(expected.getStats().get().getNullCount(columnHandle.getBaseColumnName()), actual.getStats().get().getNullCount(columnHandle.getBaseColumnName()));
                 assertEquals(expected.getStats().get().getNumRecords(), actual.getStats().get().getNumRecords());
             }
         }
@@ -692,11 +694,11 @@ public class TestTransactionLogAccess
             // Types would need to be specified properly if stats were being read from JSON but are not can be ignored when reading parsed stats from parquet,
             // so it is safe to use INTEGER as a placeholder
             assertEquals(
-                    fileStats.getMinColumnValue(new DeltaLakeColumnHandle(columnName, IntegerType.INTEGER, OptionalInt.empty(), columnName, IntegerType.INTEGER, REGULAR)),
+                    fileStats.getMinColumnValue(new DeltaLakeColumnHandle(columnName, IntegerType.INTEGER, OptionalInt.empty(), columnName, IntegerType.INTEGER, REGULAR, Optional.empty())),
                     Optional.of(statsValues.get(columnName)));
 
             assertEquals(
-                    fileStats.getMaxColumnValue(new DeltaLakeColumnHandle(columnName, IntegerType.INTEGER, OptionalInt.empty(), columnName, IntegerType.INTEGER, REGULAR)),
+                    fileStats.getMaxColumnValue(new DeltaLakeColumnHandle(columnName, IntegerType.INTEGER, OptionalInt.empty(), columnName, IntegerType.INTEGER, REGULAR, Optional.empty())),
                     Optional.of(statsValues.get(columnName)));
         }
     }
@@ -870,7 +872,7 @@ public class TestTransactionLogAccess
     {
         trackingFileSystemFactory.reset();
         callback.run();
-        assertThat(getOperations()).containsExactlyInAnyOrderElementsOf(expectedAccesses);
+        assertMultisetsEqual(getOperations(), expectedAccesses);
     }
 
     private Multiset<FileOperation> getOperations()
@@ -878,7 +880,7 @@ public class TestTransactionLogAccess
         return trackingFileSystemFactory.getOperationCounts()
                 .entrySet().stream()
                 .flatMap(entry -> nCopies(entry.getValue(), new FileOperation(
-                        entry.getKey().getFilePath().replaceFirst(".*/_delta_log/", ""),
+                        entry.getKey().getLocation().toString().replaceFirst(".*/_delta_log/", ""),
                         entry.getKey().getOperationType())).stream())
                 .collect(toCollection(HashMultiset::create));
     }

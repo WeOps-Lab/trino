@@ -26,6 +26,7 @@ import io.trino.metadata.MaterializedViewDefinition;
 import io.trino.metadata.MaterializedViewPropertyManager;
 import io.trino.metadata.MetadataManager;
 import io.trino.metadata.QualifiedObjectName;
+import io.trino.metadata.QualifiedTablePrefix;
 import io.trino.metadata.ResolvedFunction;
 import io.trino.metadata.TableHandle;
 import io.trino.metadata.TableMetadata;
@@ -58,7 +59,6 @@ import io.trino.testing.TestingMetadata.TestingTableHandle;
 import io.trino.transaction.TransactionManager;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
 
 import java.net.URI;
 import java.util.HashMap;
@@ -90,7 +90,6 @@ import static io.trino.testing.TestingHandles.TEST_CATALOG_NAME;
 import static io.trino.testing.TestingSession.testSessionBuilder;
 import static java.util.Objects.requireNonNull;
 
-@Test
 public abstract class BaseDataDefinitionTaskTest
 {
     public static final String SCHEMA = "schema";
@@ -286,6 +285,34 @@ public abstract class BaseDataDefinitionTaskTest
         }
 
         @Override
+        public void dropSchema(Session session, CatalogSchemaName schema, boolean cascade)
+        {
+            if (cascade) {
+                tables.keySet().stream()
+                        .filter(table -> schema.getSchemaName().equals(table.getSchemaName()))
+                        .forEach(tables::remove);
+                views.keySet().stream()
+                        .filter(view -> schema.getSchemaName().equals(view.getSchemaName()))
+                        .forEach(tables::remove);
+                materializedViews.keySet().stream()
+                        .filter(materializedView -> schema.getSchemaName().equals(materializedView.getSchemaName()))
+                        .forEach(tables::remove);
+            }
+            schemas.remove(schema);
+        }
+
+        @Override
+        public List<QualifiedObjectName> listTables(Session session, QualifiedTablePrefix prefix)
+        {
+            List<QualifiedObjectName> tables = ImmutableList.<QualifiedObjectName>builder()
+                    .addAll(this.tables.keySet().stream().map(table -> new QualifiedObjectName(catalogName, table.getSchemaName(), table.getTableName())).collect(toImmutableList()))
+                    .addAll(this.views.keySet().stream().map(view -> new QualifiedObjectName(catalogName, view.getSchemaName(), view.getTableName())).collect(toImmutableList()))
+                    .addAll(this.materializedViews.keySet().stream().map(mv -> new QualifiedObjectName(catalogName, mv.getSchemaName(), mv.getTableName())).collect(toImmutableList()))
+                    .build();
+            return tables.stream().filter(prefix::matches).collect(toImmutableList());
+        }
+
+        @Override
         public TableSchema getTableSchema(Session session, TableHandle tableHandle)
         {
             return new TableSchema(TEST_CATALOG_NAME, getTableMetadata(tableHandle).getTableSchema());
@@ -329,9 +356,9 @@ public abstract class BaseDataDefinitionTaskTest
         }
 
         @Override
-        public void addColumn(Session session, TableHandle tableHandle, ColumnMetadata column)
+        public void addColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnMetadata column)
         {
-            SchemaTableName tableName = getTableName(tableHandle);
+            SchemaTableName tableName = table.getSchemaTableName();
             ConnectorTableMetadata metadata = tables.get(tableName);
 
             ImmutableList.Builder<ColumnMetadata> columns = ImmutableList.builderWithExpectedSize(metadata.getColumns().size() + 1);
@@ -341,9 +368,9 @@ public abstract class BaseDataDefinitionTaskTest
         }
 
         @Override
-        public void dropColumn(Session session, TableHandle tableHandle, ColumnHandle columnHandle)
+        public void dropColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnHandle columnHandle)
         {
-            SchemaTableName tableName = getTableName(tableHandle);
+            SchemaTableName tableName = table.getSchemaTableName();
             ConnectorTableMetadata metadata = tables.get(tableName);
             String columnName = ((TestingColumnHandle) columnHandle).getName();
 
@@ -354,9 +381,9 @@ public abstract class BaseDataDefinitionTaskTest
         }
 
         @Override
-        public void renameColumn(Session session, TableHandle tableHandle, ColumnHandle source, String target)
+        public void renameColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnHandle source, String target)
         {
-            SchemaTableName tableName = getTableName(tableHandle);
+            SchemaTableName tableName = table.getSchemaTableName();
             ConnectorTableMetadata metadata = tables.get(tableName);
             String columnName = ((TestingColumnHandle) source).getName();
 

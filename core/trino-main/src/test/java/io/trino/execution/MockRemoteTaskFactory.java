@@ -21,9 +21,11 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
+import com.google.errorprone.annotations.concurrent.GuardedBy;
 import io.airlift.stats.TestingGcMonitor;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
+import io.opentelemetry.api.trace.Span;
 import io.trino.Session;
 import io.trino.cost.StatsAndCosts;
 import io.trino.exchange.ExchangeManagerRegistry;
@@ -52,8 +54,6 @@ import io.trino.sql.planner.plan.PlanNodeId;
 import io.trino.sql.planner.plan.TableScanNode;
 import io.trino.testing.TestingMetadata.TestingColumnHandle;
 import org.joda.time.DateTime;
-
-import javax.annotation.concurrent.GuardedBy;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -127,14 +127,28 @@ public class MockRemoteTaskFactory
         for (Split sourceSplit : splits) {
             initialSplits.put(sourceId, sourceSplit);
         }
-        return createRemoteTask(TEST_SESSION, taskId, newNode, testFragment, initialSplits.build(), PipelinedOutputBuffers.createInitial(BROADCAST), partitionedSplitCountTracker, ImmutableSet.of(), Optional.empty(), true);
+        return createRemoteTask(
+                TEST_SESSION,
+                Span.getInvalid(),
+                taskId,
+                newNode,
+                false,
+                testFragment,
+                initialSplits.build(),
+                PipelinedOutputBuffers.createInitial(BROADCAST),
+                partitionedSplitCountTracker,
+                ImmutableSet.of(),
+                Optional.empty(),
+                true);
     }
 
     @Override
     public MockRemoteTask createRemoteTask(
             Session session,
+            Span stageSpan,
             TaskId taskId,
             InternalNode node,
+            boolean speculative,
             PlanFragment fragment,
             Multimap<PlanNodeId, Split> initialSplits,
             OutputBuffers outputBuffers,
@@ -264,11 +278,13 @@ public class MockRemoteTaskFactory
                     state,
                     location,
                     nodeId,
+                    false,
                     failures,
                     queuedSplitsInfo.getCount(),
                     combinedSplitsInfo.getCount() - queuedSplitsInfo.getCount(),
                     outputBuffer.getStatus(),
                     stats.getOutputDataSize(),
+                    stats.getWriterInputDataSize(),
                     stats.getPhysicalWrittenDataSize(),
                     stats.getMaxWriterCount(),
                     stats.getUserMemoryReservation(),
@@ -384,6 +400,12 @@ public class MockRemoteTaskFactory
         public void setOutputBuffers(OutputBuffers outputBuffers)
         {
             outputBuffer.setOutputBuffers(outputBuffers);
+        }
+
+        @Override
+        public void setSpeculative(boolean speculative)
+        {
+            // ignore
         }
 
         @Override

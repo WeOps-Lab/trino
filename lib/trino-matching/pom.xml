@@ -5,12 +5,11 @@
     <parent>
         <groupId>io.trino</groupId>
         <artifactId>trino-root</artifactId>
-        <version>413</version>
+        <version>422</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>trino-matching</artifactId>
-    <name>trino-matching</name>
 
     <properties>
         <air.main.basedir>${project.parent.basedir}</air.main.basedir>
@@ -22,7 +21,6 @@
             <artifactId>guava</artifactId>
         </dependency>
 
-        <!-- for testing -->
         <dependency>
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>

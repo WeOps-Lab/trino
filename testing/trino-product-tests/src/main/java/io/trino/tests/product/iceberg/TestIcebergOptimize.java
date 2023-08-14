@@ -14,20 +14,19 @@
 package io.trino.tests.product.iceberg;
 
 import io.trino.tempto.ProductTest;
-import org.assertj.core.api.Assertions;
 import org.testng.annotations.Test;
 
 import java.util.List;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.tempto.assertions.QueryAssert.Row.row;
-import static io.trino.tempto.assertions.QueryAssert.assertThat;
 import static io.trino.testing.TestingNames.randomNameSuffix;
 import static io.trino.tests.product.TestGroups.ICEBERG;
 import static io.trino.tests.product.TestGroups.PROFILE_SPECIFIC_TESTS;
 import static io.trino.tests.product.utils.QueryExecutors.onSpark;
 import static io.trino.tests.product.utils.QueryExecutors.onTrino;
 import static java.lang.String.format;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests compatibility between Iceberg connector and Spark Iceberg.
@@ -79,7 +78,7 @@ public class TestIcebergOptimize
         onTrino().executeQuery("ALTER TABLE " + trinoTableName + " EXECUTE OPTIMIZE");
 
         List<String> updatedFiles = getActiveFiles(TRINO_CATALOG, TEST_SCHEMA_NAME, baseTableName);
-        Assertions.assertThat(updatedFiles)
+        assertThat(updatedFiles)
                 .hasSize(1)
                 .isNotEqualTo(initialFiles);
 

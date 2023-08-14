@@ -122,6 +122,8 @@ public interface Metadata
 
     Optional<Object> getInfo(Session session, TableHandle handle);
 
+    CatalogSchemaTableName getTableName(Session session, TableHandle tableHandle);
+
     /**
      * Return table schema definition for the specified table handle.
      * Table schema definition is a set of information
@@ -181,7 +183,7 @@ public interface Metadata
     /**
      * Drops the specified schema.
      */
-    void dropSchema(Session session, CatalogSchemaName schema);
+    void dropSchema(Session session, CatalogSchemaName schema, boolean cascade);
 
     /**
      * Renames the specified schema.
@@ -233,12 +235,17 @@ public interface Metadata
     /**
      * Rename the specified column.
      */
-    void renameColumn(Session session, TableHandle tableHandle, ColumnHandle source, String target);
+    void renameColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnHandle source, String target);
 
     /**
      * Add the specified column to the table.
      */
-    void addColumn(Session session, TableHandle tableHandle, ColumnMetadata column);
+    void addColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnMetadata column);
+
+    /**
+     * Add the specified field to the column.
+     */
+    void addField(Session session, TableHandle tableHandle, List<String> parentPath, String fieldName, Type type, boolean ignoreExisting);
 
     /**
      * Set the specified type to the column.
@@ -253,7 +260,7 @@ public interface Metadata
     /**
      * Drop the specified column.
      */
-    void dropColumn(Session session, TableHandle tableHandle, ColumnHandle column);
+    void dropColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnHandle column);
 
     /**
      * Drop the specified field from the column.
@@ -637,6 +644,8 @@ public interface Metadata
      * because overloads between aggregation and other function types are not allowed.
      */
     boolean isAggregationFunction(Session session, QualifiedName name);
+
+    boolean isWindowFunction(Session session, QualifiedName name);
 
     FunctionMetadata getFunctionMetadata(Session session, ResolvedFunction resolvedFunction);
 

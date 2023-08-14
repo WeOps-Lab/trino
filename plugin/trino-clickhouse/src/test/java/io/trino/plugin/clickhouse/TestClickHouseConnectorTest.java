@@ -64,15 +64,25 @@ public class TestClickHouseConnectorTest
     protected boolean hasBehavior(TestingConnectorBehavior connectorBehavior)
     {
         switch (connectorBehavior) {
+            case SUPPORTS_DELETE:
+                return false;
+            case SUPPORTS_TRUNCATE:
+                return true;
+
             case SUPPORTS_PREDICATE_PUSHDOWN_WITH_VARCHAR_EQUALITY:
             case SUPPORTS_PREDICATE_PUSHDOWN_WITH_VARCHAR_INEQUALITY:
             case SUPPORTS_TOPN_PUSHDOWN:
                 return false;
 
-            case SUPPORTS_SET_COLUMN_TYPE:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_STDDEV:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_VARIANCE:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_COVARIANCE:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_CORRELATION:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_REGRESSION:
+            case SUPPORTS_AGGREGATION_PUSHDOWN_COUNT_DISTINCT:
                 return false;
 
-            case SUPPORTS_DELETE:
+            case SUPPORTS_SET_COLUMN_TYPE:
                 return false;
 
             case SUPPORTS_ARRAY:
@@ -205,10 +215,24 @@ public class TestClickHouseConnectorTest
         return "(x VARCHAR NOT NULL) WITH (engine = 'MergeTree', order_by = ARRAY['x'])";
     }
 
-    @Override
-    public void testAddNotNullColumnToNonEmptyTable()
+    @Override // Overridden because the default storage type doesn't support adding columns
+    public void testAddNotNullColumnToEmptyTable()
     {
-        // Override because the default storage type doesn't support adding columns
+        try (TestTable table = new TestTable(getQueryRunner()::execute, "test_add_notnull_col_to_empty", "(a_varchar varchar NOT NULL)  WITH (engine = 'MergeTree', order_by = ARRAY['a_varchar'])")) {
+            String tableName = table.getName();
+
+            assertUpdate("ALTER TABLE " + tableName + " ADD COLUMN b_varchar varchar NOT NULL");
+            assertFalse(columnIsNullable(tableName, "b_varchar"));
+            assertUpdate("INSERT INTO " + tableName + " VALUES ('a', 'b')", 1);
+            assertThat(query("TABLE " + tableName))
+                    .skippingTypesCheck()
+                    .matches("VALUES ('a', 'b')");
+        }
+    }
+
+    @Override // Overridden because (a) the default storage type doesn't support adding columns and (b) ClickHouse has implicit default value for new NON NULL column
+    public void testAddNotNullColumn()
+    {
         try (TestTable table = new TestTable(getQueryRunner()::execute, "test_add_notnull_col", "(a_varchar varchar NOT NULL)  WITH (engine = 'MergeTree', order_by = ARRAY['a_varchar'])")) {
             String tableName = table.getName();
 
@@ -556,8 +580,14 @@ public class TestClickHouseConnectorTest
                 return Optional.empty();
 
             case "date":
-                // TODO (https://github.com/trinodb/trino/issues/7101) enable the test
-                return Optional.empty();
+                // The connector supports date type, but these values are unsupported in ClickHouse
+                // See BaseClickHouseTypeMapping for additional test coverage
+                if (dataMappingTestSetup.getSampleValueLiteral().equals("DATE '0001-01-01'") ||
+                        dataMappingTestSetup.getSampleValueLiteral().equals("DATE '1582-10-05'") ||
+                        dataMappingTestSetup.getHighValueLiteral().equals("DATE '9999-12-31'")) {
+                    return Optional.empty();
+                }
+                return Optional.of(dataMappingTestSetup);
 
             case "time":
             case "time(6)":

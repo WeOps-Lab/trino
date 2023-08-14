@@ -187,6 +187,12 @@ public abstract class AbstractMockMetadata
     }
 
     @Override
+    public CatalogSchemaTableName getTableName(Session session, TableHandle tableHandle)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public TableSchema getTableSchema(Session session, TableHandle tableHandle)
     {
         throw new UnsupportedOperationException();
@@ -235,7 +241,7 @@ public abstract class AbstractMockMetadata
     }
 
     @Override
-    public void dropSchema(Session session, CatalogSchemaName schema)
+    public void dropSchema(Session session, CatalogSchemaName schema, boolean cascade)
     {
         throw new UnsupportedOperationException();
     }
@@ -295,19 +301,25 @@ public abstract class AbstractMockMetadata
     }
 
     @Override
-    public void renameColumn(Session session, TableHandle tableHandle, ColumnHandle source, String target)
+    public void renameColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnHandle source, String target)
     {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void addColumn(Session session, TableHandle tableHandle, ColumnMetadata column)
+    public void addColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnMetadata column)
     {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void dropColumn(Session session, TableHandle tableHandle, ColumnHandle column)
+    public void addField(Session session, TableHandle tableHandle, List<String> parentPath, String fieldName, Type type, boolean ignoreExisting)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropColumn(Session session, TableHandle tableHandle, CatalogSchemaTableName table, ColumnHandle column)
     {
         throw new UnsupportedOperationException();
     }
@@ -776,6 +788,12 @@ public abstract class AbstractMockMetadata
 
     @Override
     public boolean isAggregationFunction(Session session, QualifiedName name)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isWindowFunction(Session session, QualifiedName name)
     {
         throw new UnsupportedOperationException();
     }

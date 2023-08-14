@@ -21,9 +21,9 @@ import io.airlift.concurrent.MoreFutures;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
+import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
-import io.trino.parquet.writer.ParquetSchemaConverter;
 import io.trino.parquet.writer.ParquetWriterOptions;
 import io.trino.plugin.deltalake.DataFileInfo.DataFileType;
 import io.trino.plugin.hive.FileWriter;
@@ -64,6 +64,7 @@ import static io.trino.plugin.deltalake.DeltaLakeSessionProperties.getParquetWri
 import static io.trino.plugin.deltalake.DeltaLakeTypes.toParquetType;
 import static io.trino.plugin.deltalake.transactionlog.TransactionLogAccess.canonicalizeColumnName;
 import static io.trino.plugin.hive.util.HiveUtil.escapePathName;
+import static java.lang.Math.min;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
@@ -95,8 +96,8 @@ public abstract class AbstractDeltaLakePageSink
 
     private final List<DeltaLakeWriter> writers = new ArrayList<>();
 
-    private final String tableLocation;
-    protected final String outputPathDirectory;
+    private final Location tableLocation;
+    protected final Location outputPathDirectory;
     private final ConnectorSession session;
     private final DeltaLakeWriterStats stats;
     private final String trinoVersion;
@@ -107,6 +108,7 @@ public abstract class AbstractDeltaLakePageSink
 
     private final List<Closeable> closedWriterRollbackActions = new ArrayList<>();
     protected final ImmutableList.Builder<DataFileInfo> dataFileInfos = ImmutableList.builder();
+    private final DeltaLakeParquetSchemaMapping parquetSchemaMapping;
 
     public AbstractDeltaLakePageSink(
             TypeOperators typeOperators,
@@ -116,11 +118,12 @@ public abstract class AbstractDeltaLakePageSink
             TrinoFileSystemFactory fileSystemFactory,
             int maxOpenWriters,
             JsonCodec<DataFileInfo> dataFileInfoCodec,
-            String tableLocation,
-            String outputPathDirectory,
+            Location tableLocation,
+            Location outputPathDirectory,
             ConnectorSession session,
             DeltaLakeWriterStats stats,
-            String trinoVersion)
+            String trinoVersion,
+            DeltaLakeParquetSchemaMapping parquetSchemaMapping)
     {
         this.typeOperators = requireNonNull(typeOperators, "typeOperators is null");
         requireNonNull(inputColumns, "inputColumns is null");
@@ -130,6 +133,7 @@ public abstract class AbstractDeltaLakePageSink
         this.fileSystem = requireNonNull(fileSystemFactory, "fileSystemFactory is null").create(session);
         this.maxOpenWriters = maxOpenWriters;
         this.dataFileInfoCodec = requireNonNull(dataFileInfoCodec, "dataFileInfoCodec is null");
+        this.parquetSchemaMapping = requireNonNull(parquetSchemaMapping, "parquetSchemaMapping is null");
 
         // determine the input index of the partition columns and data columns
         int[] partitionColumnInputIndex = new int[originalPartitionColumns.size()];
@@ -154,16 +158,17 @@ public abstract class AbstractDeltaLakePageSink
             DeltaLakeColumnHandle column = inputColumns.get(inputIndex);
             switch (column.getColumnType()) {
                 case PARTITION_KEY:
-                    int partitionPosition = canonicalToOriginalPartitionPositions.get(column.getName());
+                    int partitionPosition = canonicalToOriginalPartitionPositions.get(column.getColumnName());
                     partitionColumnInputIndex[partitionPosition] = inputIndex;
-                    originalPartitionColumnNames[partitionPosition] = canonicalToOriginalPartitionColumns.get(column.getName());
-                    partitionColumnTypes[partitionPosition] = column.getType();
+                    originalPartitionColumnNames[partitionPosition] = canonicalToOriginalPartitionColumns.get(column.getColumnName());
+                    partitionColumnTypes[partitionPosition] = column.getBaseType();
                     break;
                 case REGULAR:
+                    verify(column.isBaseColumn(), "Unexpected dereference: %s", column);
                     dataColumnHandles.add(column);
                     dataColumnsInputIndex.add(inputIndex);
-                    dataColumnNames.add(column.getName());
-                    dataColumnTypes.add(column.getType());
+                    dataColumnNames.add(column.getBasePhysicalColumnName());
+                    dataColumnTypes.add(column.getBasePhysicalType());
                     break;
                 case SYNTHESIZED:
                     processSynthesizedColumn(column);
@@ -173,7 +178,6 @@ public abstract class AbstractDeltaLakePageSink
             }
         }
 
-        addSpecialColumns(inputColumns, dataColumnHandles, dataColumnsInputIndex, dataColumnNames, dataColumnTypes);
         this.partitionColumnsInputIndex = partitionColumnInputIndex;
         this.dataColumnInputIndex = Ints.toArray(dataColumnsInputIndex.build());
         this.originalPartitionColumnNames = ImmutableList.copyOf(originalPartitionColumnNames);
@@ -194,13 +198,6 @@ public abstract class AbstractDeltaLakePageSink
     }
 
     protected abstract void processSynthesizedColumn(DeltaLakeColumnHandle column);
-
-    protected abstract void addSpecialColumns(
-            List<DeltaLakeColumnHandle> inputColumns,
-            ImmutableList.Builder<DeltaLakeColumnHandle> dataColumnHandles,
-            ImmutableList.Builder<Integer> dataColumnsInputIndex,
-            ImmutableList.Builder<String> dataColumnNames,
-            ImmutableList.Builder<Type> dataColumnTypes);
 
     protected abstract String getPathPrefix();
 
@@ -269,17 +266,13 @@ public abstract class AbstractDeltaLakePageSink
     @Override
     public CompletableFuture<?> appendPage(Page page)
     {
-        if (page.getPositionCount() == 0) {
-            return NOT_BLOCKED;
-        }
-
-        while (page.getPositionCount() > MAX_PAGE_POSITIONS) {
-            Page chunk = page.getRegion(0, MAX_PAGE_POSITIONS);
-            page = page.getRegion(MAX_PAGE_POSITIONS, page.getPositionCount() - MAX_PAGE_POSITIONS);
+        int writeOffset = 0;
+        while (writeOffset < page.getPositionCount()) {
+            Page chunk = page.getRegion(writeOffset, min(page.getPositionCount() - writeOffset, MAX_PAGE_POSITIONS));
+            writeOffset += chunk.getPositionCount();
             writePage(chunk);
         }
 
-        writePage(page);
         return NOT_BLOCKED;
     }
 
@@ -358,18 +351,18 @@ public abstract class AbstractDeltaLakePageSink
                 closeWriter(writerIndex);
             }
 
-            String filePath = outputPathDirectory;
+            Location filePath = outputPathDirectory;
 
             List<String> partitionValues = createPartitionValues(partitionColumnTypes, partitionColumns, position);
             Optional<String> partitionName = Optional.empty();
             if (!originalPartitionColumnNames.isEmpty()) {
                 String partName = makePartName(originalPartitionColumnNames, partitionValues);
-                filePath = appendPath(outputPathDirectory, partName);
+                filePath = filePath.appendPath(partName);
                 partitionName = Optional.of(partName);
             }
 
             String fileName = session.getQueryId() + "-" + randomUUID();
-            filePath = appendPath(filePath, fileName);
+            filePath = filePath.appendPath(fileName);
 
             FileWriter fileWriter = createParquetFileWriter(filePath);
 
@@ -448,7 +441,7 @@ public abstract class AbstractDeltaLakePageSink
                 .collect(toList());
     }
 
-    private FileWriter createParquetFileWriter(String path)
+    private FileWriter createParquetFileWriter(Location path)
     {
         ParquetWriterOptions parquetWriterOptions = ParquetWriterOptions.builder()
                 .setMaxBlockSize(getParquetWriterBlockSize(session))
@@ -470,14 +463,13 @@ public abstract class AbstractDeltaLakePageSink
                 identityMapping[i] = i;
             }
 
-            ParquetSchemaConverter schemaConverter = new ParquetSchemaConverter(parquetTypes, dataColumnNames, false, false);
             return new ParquetFileWriter(
                     fileSystem.newOutputFile(path),
                     rollbackAction,
                     parquetTypes,
                     dataColumnNames,
-                    schemaConverter.getMessageType(),
-                    schemaConverter.getPrimitiveTypes(),
+                    parquetSchemaMapping.messageType(),
+                    parquetSchemaMapping.primitiveTypes(),
                     parquetWriterOptions,
                     identityMapping,
                     compressionCodec,

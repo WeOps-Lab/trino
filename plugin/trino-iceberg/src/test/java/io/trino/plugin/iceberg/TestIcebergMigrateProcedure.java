@@ -64,6 +64,9 @@ public class TestIcebergMigrateProcedure
 
         assertUpdate("CALL iceberg.system.migrate('tpch', '" + tableName + "')");
 
+        assertThat((String) computeScalar("SHOW CREATE TABLE " + icebergTableName))
+                .contains("format = '%s'".formatted(fileFormat));
+
         assertQuery("SELECT * FROM " + icebergTableName, "VALUES 1");
         assertQuery("SELECT count(*) FROM " + icebergTableName, "VALUES 1");
 
@@ -104,6 +107,30 @@ public class TestIcebergMigrateProcedure
         assertQuery("SELECT * FROM " + icebergTableName, "VALUES (1, 'part1'), (2, 'part2')");
 
         assertUpdate("DROP TABLE " + tableName);
+    }
+
+    @Test
+    public void testMigrateBucketedTable()
+    {
+        String tableName = "test_migrate_bucketed_table_" + randomNameSuffix();
+        String hiveTableName = "hive.tpch." + tableName;
+        String icebergTableName = "iceberg.tpch." + tableName;
+
+        assertUpdate("CREATE TABLE " + hiveTableName + " WITH (partitioned_by = ARRAY['part'], bucketed_by = ARRAY['bucket'], bucket_count = 10) AS SELECT 1 bucket, 'part1' part", 1);
+
+        assertUpdate("CALL iceberg.system.migrate('tpch', '" + tableName + "')");
+
+        // Make sure partition column is preserved, but it's migrated as a non-bucketed table
+        assertThat(query("SELECT partition FROM iceberg.tpch.\"" + tableName + "$partitions\""))
+                .skippingTypesCheck()
+                .matches("SELECT CAST(row('part1') AS row(part_col varchar))");
+        assertThat((String) computeScalar("SHOW CREATE TABLE " + icebergTableName))
+                .contains("partitioning = ARRAY['part']");
+
+        assertUpdate("INSERT INTO " + icebergTableName + " VALUES (2, 'part2')", 1);
+        assertQuery("SELECT * FROM " + icebergTableName, "VALUES (1, 'part1'), (2, 'part2')");
+
+        assertUpdate("DROP TABLE " + icebergTableName);
     }
 
     @Test
@@ -236,6 +263,26 @@ public class TestIcebergMigrateProcedure
     }
 
     @Test
+    public void testMigrateUnsupportedComplexColumnType()
+    {
+        // TODO https://github.com/trinodb/trino/issues/17583 Add support for these complex types
+        String tableName = "test_migrate_unsupported_complex_column_type_" + randomNameSuffix();
+        String hiveTableName = "hive.tpch." + tableName;
+
+        assertUpdate("CREATE TABLE " + hiveTableName + " AS SELECT array[1] x", 1);
+        assertQueryFails("CALL iceberg.system.migrate('tpch', '" + tableName + "')", "\\QMigrating array(integer) type is not supported");
+        assertUpdate("DROP TABLE " + hiveTableName);
+
+        assertUpdate("CREATE TABLE " + hiveTableName + " AS SELECT map(array['key'], array[2]) x", 1);
+        assertQueryFails("CALL iceberg.system.migrate('tpch', '" + tableName + "')", "\\QMigrating map(varchar(3), integer) type is not supported");
+        assertUpdate("DROP TABLE " + hiveTableName);
+
+        assertUpdate("CREATE TABLE " + hiveTableName + " AS SELECT CAST(row(1) AS row(y integer)) x", 1);
+        assertQueryFails("CALL iceberg.system.migrate('tpch', '" + tableName + "')", "\\QMigrating row(y integer) type is not supported");
+        assertUpdate("DROP TABLE " + hiveTableName);
+    }
+
+    @Test
     public void testMigrateUnsupportedTableFormat()
     {
         String tableName = "test_migrate_unsupported_table_format_" + randomNameSuffix();
@@ -254,24 +301,6 @@ public class TestIcebergMigrateProcedure
     }
 
     @Test
-    public void testMigrateUnsupportedBucketedTable()
-    {
-        String tableName = "test_migrate_unsupported_bucketed_table_" + randomNameSuffix();
-        String hiveTableName = "hive.tpch." + tableName;
-        String icebergTableName = "iceberg.tpch." + tableName;
-
-        assertUpdate("CREATE TABLE " + hiveTableName + " WITH (partitioned_by = ARRAY['part'], bucketed_by = ARRAY['bucket'], bucket_count = 10) AS SELECT 1 bucket, 'test' part", 1);
-
-        assertThatThrownBy(() -> query("CALL iceberg.system.migrate('tpch', '" + tableName + "')"))
-                .hasStackTraceContaining("Cannot migrate bucketed table: [bucket]");
-
-        assertQuery("SELECT * FROM " + hiveTableName, "VALUES (1, 'test')");
-        assertQueryFails("SELECT * FROM " + icebergTableName, "Not an Iceberg table: .*");
-
-        assertUpdate("DROP TABLE " + hiveTableName);
-    }
-
-    @Test
     public void testMigrateUnsupportedTableType()
     {
         String viewName = "test_migrate_unsupported_table_type_" + randomNameSuffix();
@@ -282,7 +311,7 @@ public class TestIcebergMigrateProcedure
 
         assertQueryFails(
                 "CALL iceberg.system.migrate('tpch', '" + viewName + "')",
-                "The procedure supports migrating only managed tables: .*");
+                "The procedure doesn't support migrating VIRTUAL_VIEW table type");
 
         assertQuery("SELECT * FROM " + trinoViewInHive, "VALUES 1");
         assertQuery("SELECT * FROM " + trinoViewInIceberg, "VALUES 1");
