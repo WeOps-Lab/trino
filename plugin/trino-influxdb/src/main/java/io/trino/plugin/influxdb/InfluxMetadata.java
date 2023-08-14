@@ -19,12 +19,12 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.trino.spi.connector.*;
 import io.trino.spi.expression.ConnectorExpression;
+import io.trino.spi.function.table.ConnectorTableFunctionHandle;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.EquatableValueSet;
 import io.trino.spi.predicate.Range;
 import io.trino.spi.predicate.SortedRangeSet;
 import io.trino.spi.predicate.TupleDomain;
-import io.trino.spi.ptf.ConnectorTableFunctionHandle;
 import io.trino.spi.type.TimestampType;
 
 import com.google.inject.Inject;
@@ -76,7 +76,7 @@ public class InfluxMetadata
     @Override
     public InfluxTableHandle getTableHandle(ConnectorSession session, SchemaTableName schemaTableName) {
         return client.getTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName())
-                .map(table -> new InfluxTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName(),  ImmutableList.of(), Optional.empty())).orElse(null);
+                .map(table -> new InfluxTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName(), ImmutableList.of(), Optional.empty())).orElse(null);
     }
 
     @Override

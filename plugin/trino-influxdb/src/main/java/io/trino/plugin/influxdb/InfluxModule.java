@@ -18,18 +18,16 @@ import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
 import io.trino.plugin.influxdb.ptf.RawQuery;
-import io.trino.spi.ptf.ConnectorTableFunction;
+import io.trino.spi.function.table.ConnectorTableFunction;
 
 import static com.google.inject.Scopes.SINGLETON;
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 
 public class InfluxModule
-        implements Module
-{
+        implements Module {
     @Override
-    public void configure(Binder binder)
-    {
+    public void configure(Binder binder) {
         configBinder(binder).bindConfig(InfluxConfig.class);
 
         binder.bind(InfluxClient.class).to(NativeInfluxClient.class).in(SINGLETON);

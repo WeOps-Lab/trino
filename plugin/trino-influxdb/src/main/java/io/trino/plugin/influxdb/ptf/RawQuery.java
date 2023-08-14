@@ -21,19 +21,28 @@ import io.trino.plugin.influxdb.InfluxColumnHandle;
 import io.trino.plugin.influxdb.InfluxMetadata;
 import io.trino.plugin.influxdb.InfluxTableHandle;
 import io.trino.spi.connector.*;
-import io.trino.spi.ptf.*;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
+import static io.trino.spi.function.table.ReturnTypeSpecification.GenericTable.GENERIC_TABLE;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static io.trino.spi.ptf.ReturnTypeSpecification.GenericTable.GENERIC_TABLE;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
+
+import io.trino.spi.function.table.AbstractConnectorTableFunction;
+import io.trino.spi.function.table.Argument;
+import io.trino.spi.function.table.ConnectorTableFunction;
+import io.trino.spi.function.table.ConnectorTableFunctionHandle;
+import io.trino.spi.function.table.Descriptor;
+import io.trino.spi.function.table.ScalarArgument;
+import io.trino.spi.function.table.ScalarArgumentSpecification;
+import io.trino.spi.function.table.TableFunctionAnalysis;
+import com.google.inject.Inject;
+import com.google.inject.Provider;
 
 public class RawQuery
         implements Provider<ConnectorTableFunction> {
@@ -78,12 +87,12 @@ public class RawQuery
         }
 
         @Override
-        public TableFunctionAnalysis analyze(ConnectorSession session, ConnectorTransactionHandle transaction, Map<String, Argument> arguments) {
+        public TableFunctionAnalysis analyze(ConnectorSession session, ConnectorTransactionHandle transaction, Map<String, Argument> arguments, ConnectorAccessControl accessControl) {
             String schema = ((Slice) ((ScalarArgument) arguments.get("SCHEMA")).getValue()).toStringUtf8();
             String index = ((Slice) ((ScalarArgument) arguments.get("INDEX")).getValue()).toStringUtf8();
             String query = ((Slice) ((ScalarArgument) arguments.get("QUERY")).getValue()).toStringUtf8();
 
-            InfluxTableHandle tableHandle = new InfluxTableHandle(schema, index,  ImmutableList.of(),Optional.of(query));
+            InfluxTableHandle tableHandle = new InfluxTableHandle(schema, index, ImmutableList.of(), Optional.of(query));
             ConnectorTableSchema tableSchema = metadata.getTableSchema(session, tableHandle);
             Map<String, ColumnHandle> columnsByName = metadata.getColumnHandles(session, tableHandle);
             List<ColumnHandle> columns = tableSchema.getColumns().stream()
@@ -103,6 +112,7 @@ public class RawQuery
                     .handle(handle)
                     .build();
         }
+
     }
 
     public static class RawQueryFunctionHandle
