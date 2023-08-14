@@ -17,7 +17,7 @@ RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
 RUN sed -i s@/security.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get install -y git gcc make
-RUN git clone https://github.com/airlift/jvmkill /tmp/jvmkill
+RUN git clone https://github.etherfurnace.cn/https://github.com/airlift/jvmkill.git /tmp/jvmkill
 RUN make -C /tmp/jvmkill
 
 FROM eclipse-temurin:17.0.6_10-jdk-focal
@@ -36,7 +36,7 @@ ARG TRINO_VERSION
 COPY --chown=trino:trino trino-cli-${TRINO_VERSION}-executable.jar /usr/bin/trino
 COPY --chown=trino:trino trino-server-${TRINO_VERSION} /usr/lib/trino
 COPY --chown=trino:trino default/etc /etc/trino
-COPY --chown=trino:trino --from=jvmkill /libjvmkill.so /usr/lib/trino/bin
+COPY --chown=trino:trino --from=builder /tmp/jvmkill/libjvmkill.so /usr/lib/trino/bin
 
 EXPOSE 8080
 USER trino:trino
