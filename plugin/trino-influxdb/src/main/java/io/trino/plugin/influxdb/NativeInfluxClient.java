@@ -52,8 +52,7 @@ import static org.influxdb.dto.QueryResult.Result;
 import static org.influxdb.dto.QueryResult.Series;
 
 public class NativeInfluxClient
-        implements InfluxClient
-{
+        implements InfluxClient {
     private static final Logger log = Logger.get(NativeInfluxClient.class);
 
     private static final List<String> INTERNAL_SCHEMAS = ImmutableList.of("_internal");
@@ -64,8 +63,7 @@ public class NativeInfluxClient
     private final InfluxDB client;
 
     @Inject
-    public NativeInfluxClient(InfluxConfig config)
-    {
+    public NativeInfluxClient(InfluxConfig config) {
         OkHttpClient.Builder httpBuilder = new OkHttpClient.Builder()
                 .connectionPool(new ConnectionPool(10, 10, MINUTES))
                 .connectTimeout(config.getConnectTimeOut().toMillis(), MILLISECONDS)
@@ -74,15 +72,13 @@ public class NativeInfluxClient
 
         if (config.getUsername().isEmpty() || config.getPassword().isEmpty()) {
             this.client = InfluxDBFactory.connect(config.getEndpoint(), httpBuilder);
-        }
-        else {
+        } else {
             this.client = InfluxDBFactory.connect(config.getEndpoint(), config.getUsername().get(), config.getPassword().get(), httpBuilder);
         }
     }
 
     @Override
-    public InfluxRecord query(Query query)
-    {
+    public InfluxRecord query(Query query) {
         try {
             QueryResult queryResult = client.query(query);
             requireNonNull(queryResult);
@@ -98,31 +94,30 @@ public class NativeInfluxClient
             if (result.getSeries().size() == 1) {
                 Series series = getOnlyElement(result.getSeries());
                 return new InfluxRecord(series.getColumns(), series.getValues());
-            }
-            else {
+            } else {
                 ImmutableList.Builder<String> columns = builder();
                 List<List<Object>> values = new ArrayList<>();
                 Series firstSeries = result.getSeries().get(0);
                 columns.addAll(firstSeries.getColumns());
                 columns.addAll(firstSeries.getTags().keySet());
                 for (Series series : result.getSeries()) {
-                    List<Object> value = new ArrayList<>();
-                    value.addAll(series.getValues().get(0));
-                    value.addAll(series.getTags().values());
-                    values.add(value);
+                    for (List<Object> seriesValue : series.getValues()) {
+                        List<Object> value = new ArrayList<>();
+                        value.addAll(seriesValue);
+                        value.addAll(series.getTags().values());
+                        values.add(value);
+                    }
                 }
                 return new InfluxRecord(columns.build(), values);
             }
-        }
-        catch (Throwable e) {
+        } catch (Throwable e) {
             log.error("InfluxDB query error: %s.", e);
             throw new RuntimeException(e);
         }
     }
 
     @Override
-    public List<String> getSchemaNames()
-    {
+    public List<String> getSchemaNames() {
         QueryResult result = client.query(new Query(SHOW_DATABASE_CMD));
         requireNonNull(result);
 
@@ -145,8 +140,7 @@ public class NativeInfluxClient
     }
 
     @Override
-    public List<SchemaTableName> getSchemaTableNames(String schemaName)
-    {
+    public List<SchemaTableName> getSchemaTableNames(String schemaName) {
         QueryResult result = client.query(new Query(SHOW_MEASUREMENTS_CMD, schemaName));
         requireNonNull(result);
 
@@ -170,8 +164,7 @@ public class NativeInfluxClient
     }
 
     @Override
-    public Optional<InfluxTableHandle> getTableHandle(String schemaName, String tableName)
-    {
+    public Optional<InfluxTableHandle> getTableHandle(String schemaName, String tableName) {
         requireNonNull(schemaName, "schemaName is null");
         requireNonNull(tableName, "tableName is null");
 
@@ -185,11 +178,10 @@ public class NativeInfluxClient
         QueryResult tagResult = client.query(new Query(tagKeysCommand, schemaName));
 
         List<InfluxColumnHandle> columns = this.buildColumns(fieldResult, tagResult);
-        return Optional.of(new InfluxTableHandle(schemaName, tableName, columns,Optional.empty()));
+        return Optional.of(new InfluxTableHandle(schemaName, tableName, columns, Optional.empty()));
     }
 
-    private List<InfluxColumnHandle> buildColumns(QueryResult fieldResult, QueryResult tagResult)
-    {
+    private List<InfluxColumnHandle> buildColumns(QueryResult fieldResult, QueryResult tagResult) {
         ImmutableList.Builder<InfluxColumnHandle> columnBuilder = ImmutableList.builder();
         columnBuilder.add(new InfluxColumnHandle(ColumnName.TIME.getName(), toTrinoType(TIMESTAMP), TIME));
 
@@ -204,18 +196,15 @@ public class NativeInfluxClient
         return columnBuilder.build();
     }
 
-    private ImmutableList<InfluxColumnHandle> buildInfluxFieldColumns(List<Result> result)
-    {
+    private ImmutableList<InfluxColumnHandle> buildInfluxFieldColumns(List<Result> result) {
         return buildInfluxColumns(getOnlyElement(result), false, true);
     }
 
-    private ImmutableList<InfluxColumnHandle> buildInfluxTagColumns(List<Result> result)
-    {
+    private ImmutableList<InfluxColumnHandle> buildInfluxTagColumns(List<Result> result) {
         return buildInfluxColumns(getOnlyElement(result), true, false);
     }
 
-    private ImmutableList<InfluxColumnHandle> buildInfluxColumns(Result result, boolean isTag, boolean isField)
-    {
+    private ImmutableList<InfluxColumnHandle> buildInfluxColumns(Result result, boolean isTag, boolean isField) {
         ImmutableList.Builder<InfluxColumnHandle> columnBuilder = ImmutableList.builder();
 
         List<Series> series = result.getSeries();
