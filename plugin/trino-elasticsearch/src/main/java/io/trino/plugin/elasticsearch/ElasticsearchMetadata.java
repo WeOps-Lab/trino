@@ -39,6 +39,7 @@ import io.trino.plugin.elasticsearch.decoders.TimestampDecoder;
 import io.trino.plugin.elasticsearch.decoders.TinyintDecoder;
 import io.trino.plugin.elasticsearch.decoders.VarbinaryDecoder;
 import io.trino.plugin.elasticsearch.decoders.VarcharDecoder;
+import io.trino.plugin.elasticsearch.ptf.AlarmInfo.AlarmInfoFunctionHandle;
 import io.trino.plugin.elasticsearch.ptf.RawQuery.RawQueryFunctionHandle;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
@@ -613,14 +614,19 @@ public class ElasticsearchMetadata
 
     @Override
     public Optional<TableFunctionApplicationResult<ConnectorTableHandle>> applyTableFunction(ConnectorSession session, ConnectorTableFunctionHandle handle) {
-        if (!(handle instanceof RawQueryFunctionHandle)) {
+        if (!(handle instanceof RawQueryFunctionHandle) && !(handle instanceof AlarmInfoFunctionHandle)) {
             return Optional.empty();
         }
-
+        if (handle instanceof AlarmInfoFunctionHandle) {
+            ConnectorTableHandle tableHandle = ((AlarmInfoFunctionHandle) handle).getTableHandle();
+            List<ColumnHandle> columnHandles = ImmutableList.copyOf(getColumnHandles(session, tableHandle).values());
+            return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+        }
         ConnectorTableHandle tableHandle = ((RawQueryFunctionHandle) handle).getTableHandle();
         List<ColumnHandle> columnHandles = ImmutableList.copyOf(getColumnHandles(session, tableHandle).values());
         return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
     }
+
 
     private static class InternalTableMetadata {
         private final SchemaTableName tableName;
