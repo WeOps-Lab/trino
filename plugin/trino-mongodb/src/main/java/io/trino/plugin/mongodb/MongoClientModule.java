@@ -25,6 +25,7 @@ import com.mongodb.client.MongoClients;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
 import io.trino.plugin.mongodb.ptf.Query;
+import io.trino.plugin.mongodb.ptf.QueryCMDB;
 import io.trino.spi.function.table.ConnectorTableFunction;
 import io.trino.spi.type.TypeManager;
 
@@ -56,6 +57,7 @@ public class MongoClientModule
                 new MongoSslModule()));
 
         newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(Query.class).in(Scopes.SINGLETON);
+        newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(QueryCMDB.class).in(Scopes.SINGLETON);
     }
 
     @Singleton
