@@ -60,10 +60,12 @@ public class AlarmInfo implements Provider<ConnectorTableFunction> {
             this.metadata = requireNonNull(metadata, "metadata is null");
         }
 
+        //普通项过滤器
         private String buildFilter(String field, String value) {
             return value != null ? String.format("{ \"term\": { \"%s\": \"%s\" } }", field, value) : "";
         }
 
+        //日期过滤器
         private String buildDateFilter(String startTime, String endTime) {
             if (startTime != null && endTime != null) {
                 return String.format("""
@@ -100,6 +102,7 @@ public class AlarmInfo implements Provider<ConnectorTableFunction> {
             return "";
         }
 
+        //将输入的排序字符串转换为 Elasticsearch 查询中的排序语句
         public static String parseSortString(String sortString) {
             StringBuilder stringBuilder = new StringBuilder();
             String[] sortFields = sortString.split(",");
@@ -122,6 +125,7 @@ public class AlarmInfo implements Provider<ConnectorTableFunction> {
 
         @Override
         public TableFunctionAnalysis analyze(ConnectorSession session, ConnectorTransactionHandle transaction, Map<String, Argument> arguments, ConnectorAccessControl accessControl) {
+            // Trino函数固定字段
             String schema = getStringArgument(arguments, "SCHEMA");
             String index = getStringArgument(arguments, "INDEX");
             String startTime = getStringArgument(arguments, "START_TIME");
@@ -134,6 +138,7 @@ public class AlarmInfo implements Provider<ConnectorTableFunction> {
             String fields = getStringArgument(arguments, "FIELDS");
             String sort = getStringArgument(arguments, "SORT");
 
+            // es查询字段和语句转换
             String dateFilter = buildDateFilter(startTime, endTime);
             String bizFilter = buildFilter("bk_biz_id", instBiz);
             String objFilter = buildFilter("bk_obj_id", instObj);
