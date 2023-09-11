@@ -87,6 +87,16 @@ public class QueryCMDB
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
+                                    .name("FIELDS")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification.builder()
+                                    .name("REGEX")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification.builder()
                                     .name("BIZ")
                                     .type(VARCHAR)
                                     .defaultValue(null)
@@ -107,9 +117,16 @@ public class QueryCMDB
             String biz = getStringArgument(arguments, "BIZ");
             String objectName = getStringArgument(arguments, "BKOBJID");
             String filter = getStringArgument(arguments, "FILTER");
+            String fields = getStringArgument(arguments, "FIELDS");
+            String regex = getStringArgument(arguments, "REGEX");
             String collection = "";
 
             database = database.isEmpty() ? "cmdb" : database;
+
+            if ((filter.isEmpty())&&!fields.isEmpty() && !regex.isEmpty()) {
+                filter = regexFilter(fields, regex);
+            }
+
             filter = filter.isEmpty() ? "{}" : filter;
 
             if (!biz.isEmpty()) {
@@ -161,6 +178,15 @@ public class QueryCMDB
     private static String getStringArgument(Map<String, Argument> arguments, String argName) {
         Slice slice = ((Slice) ((ScalarArgument) arguments.get(argName)).getValue());
         return slice != null ? slice.toStringUtf8() : "";
+    }
+
+    private static String regexFilter(String fields, String regex) {
+        if (fields != null && regex != null) {
+            return String.format("""
+                        {%s: {$regex: "%s", $options: "i"}}
+                        """, fields, regex);
+        }
+        return "{}";
     }
 
     public static Document parseFilter(String filter)
