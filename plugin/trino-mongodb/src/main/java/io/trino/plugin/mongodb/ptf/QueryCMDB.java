@@ -95,7 +95,17 @@ public class QueryCMDB
                 Map<String, Argument> arguments,
                 ConnectorAccessControl accessControl) {
             String database = ((Slice) requireNonNull(((ScalarArgument) arguments.get("DATABASE")).getValue())).toStringUtf8();
-            String collection = "cc_objectbase_0_pub_" + ((Slice) requireNonNull(((ScalarArgument) arguments.get("BKOBJID")).getValue())).toStringUtf8();
+
+            // 主机host对象需要特殊处理
+            String objectName = ((Slice) requireNonNull(((ScalarArgument) arguments.get("BKOBJID")).getValue())).toStringUtf8();
+            String collection;
+            if (objectName.equals("host")) {
+                collection = "cc_hostbase";
+            }
+            else {
+                collection = "cc_objectbase_0_pub_" + objectName;
+            }
+
             String filter = ((Slice) requireNonNull(((ScalarArgument) arguments.get("FILTER")).getValue())).toStringUtf8();
 
 
