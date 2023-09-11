@@ -54,7 +54,73 @@ public class AlarmInfo implements Provider<ConnectorTableFunction> {
         private final ElasticsearchMetadata metadata;
 
         public AlarmInfoFunction(ElasticsearchMetadata metadata) {
-            super(SCHEMA_NAME, NAME, List.of(ScalarArgumentSpecification.builder().name("SCHEMA").type(VARCHAR).build(), ScalarArgumentSpecification.builder().name("INDEX").type(VARCHAR).build(), ScalarArgumentSpecification.builder().name("START_TIME").type(VARCHAR).defaultValue(null).build(), ScalarArgumentSpecification.builder().name("END_TIME").type(VARCHAR).defaultValue(null).build(), ScalarArgumentSpecification.builder().name("BK_OBJ_ID").type(VARCHAR).defaultValue(null).build(), ScalarArgumentSpecification.builder().name("ALARM_LEVEL").type(VARCHAR).defaultValue(null).build(), ScalarArgumentSpecification.builder().name("ALARM_STATUS").type(VARCHAR).defaultValue(null).build(), ScalarArgumentSpecification.builder().name("BK_BIZ_ID").type(VARCHAR).defaultValue(null).build(), ScalarArgumentSpecification.builder().name("SIZE").type(VARCHAR).defaultValue(null).build(), ScalarArgumentSpecification.builder().name("FIELDS").type(VARCHAR).defaultValue(null).build(), ScalarArgumentSpecification.builder().name("SORT").type(VARCHAR).defaultValue(null).build()
+            super(
+                    SCHEMA_NAME,
+                    NAME,
+                    List.of(
+                            ScalarArgumentSpecification.builder()
+                                    .name("SCHEMA")
+                                    .type(VARCHAR)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("INDEX")
+                                    .type(VARCHAR)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("START_TIME")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("END_TIME")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("BK_OBJ_ID")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("ALARM_LEVEL")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("ALARM_STATUS")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("BK_BIZ_ID")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("SIZE")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("FIELDS")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification
+                                    .builder()
+                                    .name("SORT")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build()
 
             ), GENERIC_TABLE);
             this.metadata = requireNonNull(metadata, "metadata is null");
