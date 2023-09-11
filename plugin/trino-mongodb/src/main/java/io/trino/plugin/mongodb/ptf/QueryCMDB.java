@@ -41,7 +41,7 @@ public class QueryCMDB
         implements Provider<ConnectorTableFunction>
 {
     public static final String SCHEMA_NAME = "system";
-    public static final String NAME = "cmdb";
+    public static final String NAME = "get_inst";
 
     private final MongoMetadata metadata;
     private final MongoSession session;
@@ -74,14 +74,22 @@ public class QueryCMDB
                             ScalarArgumentSpecification.builder()
                                     .name("DATABASE")
                                     .type(VARCHAR)
+                                    .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
                                     .name("FILTER")
                                     .type(VARCHAR)
+                                    .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
                                     .name("BKOBJID")
                                     .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification.builder()
+                                    .name("BIZ")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
                                     .build()),
                     GENERIC_TABLE);
             this.metadata = requireNonNull(metadata, "metadata is null");
@@ -94,20 +102,28 @@ public class QueryCMDB
                 ConnectorTransactionHandle transaction,
                 Map<String, Argument> arguments,
                 ConnectorAccessControl accessControl) {
-            String database = ((Slice) requireNonNull(((ScalarArgument) arguments.get("DATABASE")).getValue())).toStringUtf8();
 
-            // 主机host对象需要特殊处理
-            String objectName = ((Slice) requireNonNull(((ScalarArgument) arguments.get("BKOBJID")).getValue())).toStringUtf8();
-            String collection;
-            if (objectName.equals("host")) {
-                collection = "cc_hostbase";
+            String database =getStringArgument(arguments, "DATABASE");
+            String biz = getStringArgument(arguments, "BIZ");
+            String objectName = getStringArgument(arguments, "BKOBJID");
+            String filter = getStringArgument(arguments, "FILTER");
+            String collection = "";
+
+            database = database.isEmpty() ? "cmdb" : database;
+            filter = filter.isEmpty() ? "{}" : filter;
+
+            if (!biz.isEmpty()) {
+                collection = "cc_applicationbase";
+            } else {
+                if (!objectName.isEmpty()) {
+                    // 主机host对象需要特殊处理
+                    if (objectName.equals("host")) {
+                        collection = "cc_hostbase";
+                    } else {
+                        collection = "cc_objectbase_0_pub_" + objectName;
+                    }
+                }
             }
-            else {
-                collection = "cc_objectbase_0_pub_" + objectName;
-            }
-
-            String filter = ((Slice) requireNonNull(((ScalarArgument) arguments.get("FILTER")).getValue())).toStringUtf8();
-
 
             if (!database.equals(database.toLowerCase(ENGLISH))) {
                 throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "Only lowercase database name is supported");
@@ -140,6 +156,11 @@ public class QueryCMDB
                     .handle(handle)
                     .build();
         }
+    }
+
+    private static String getStringArgument(Map<String, Argument> arguments, String argName) {
+        Slice slice = ((Slice) ((ScalarArgument) arguments.get(argName)).getValue());
+        return slice != null ? slice.toStringUtf8() : "";
     }
 
     public static Document parseFilter(String filter)
