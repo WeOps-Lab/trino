@@ -19,22 +19,17 @@ import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.mysql.cj.jdbc.Driver;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
-import io.trino.plugin.jdbc.BaseJdbcConfig;
-import io.trino.plugin.jdbc.ConnectionFactory;
-import io.trino.plugin.jdbc.DecimalModule;
-import io.trino.plugin.jdbc.DriverConnectionFactory;
-import io.trino.plugin.jdbc.ForBaseJdbc;
-import io.trino.plugin.jdbc.JdbcClient;
-import io.trino.plugin.jdbc.JdbcJoinPushdownSupportModule;
-import io.trino.plugin.jdbc.JdbcStatisticsConfig;
+import io.trino.plugin.jdbc.*;
 import io.trino.plugin.jdbc.credential.CredentialProvider;
 import io.trino.plugin.jdbc.ptf.Query;
+import io.trino.plugin.mysql.ptf.QueryITSM;
 import io.trino.spi.function.table.ConnectorTableFunction;
 
 import java.sql.SQLException;
 import java.util.Properties;
 
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
+import static com.google.inject.multibindings.OptionalBinder.newOptionalBinder;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 
 public class MySqlClientModule
@@ -44,12 +39,14 @@ public class MySqlClientModule
     protected void setup(Binder binder)
     {
         binder.bind(JdbcClient.class).annotatedWith(ForBaseJdbc.class).to(MySqlClient.class).in(Scopes.SINGLETON);
+        newOptionalBinder(binder, JdbcMetadataFactory.class).setBinding().to(MysqlJdbcMetadataFactory.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(MySqlJdbcConfig.class);
         configBinder(binder).bindConfig(MySqlConfig.class);
         configBinder(binder).bindConfig(JdbcStatisticsConfig.class);
         install(new DecimalModule());
         install(new JdbcJoinPushdownSupportModule());
         newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(Query.class).in(Scopes.SINGLETON);
+        newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(QueryITSM.class).in(Scopes.SINGLETON);
     }
 
     @Provides
