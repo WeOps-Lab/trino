@@ -119,15 +119,27 @@ public class QueryCustom
 
 
             switch (scene) {
-                // 关闭工单、未关闭工单、工单总数
-                case "ticket_status_count" -> query = ("""
+                // 主机agent状态统计
+                case "agent_status" -> query = """
                         SELECT
-                            SUM(CASE WHEN current_status IN ('FINISHED', 'REVOKED') THEN 1 ELSE 0 END) as closed_ticket,
-                            SUM(CASE WHEN current_status NOT IN ('FINISHED', 'REVOKED') THEN 1 ELSE 0 END) as opened_ticket,
-                            COUNT(*) as total_ticket
+                            COUNT(*) AS host_count,
+                            SUM( CASE WHEN e.STATUS = 'RUNNING' THEN 1 ELSE 0 END ) AS running_count,
+                            SUM( CASE WHEN e.STATUS = 'NOT_INSTALLED' THEN 1 ELSE 0 END ) AS not_installed_count,
+                            SUM( CASE WHEN e.STATUS NOT IN ( 'RUNNING', 'NOT_INSTALLED' ) THEN 1 ELSE 0 END ) AS other_count
                         FROM
-                            bk_itsm.ticket_ticket
-                        """);
+                            (
+                            SELECT
+                                c.bk_host_id,
+                                c.STATUS,
+                                d.bk_biz_id,
+                                d.bk_host_name
+                            FROM
+                                bk_nodeman.node_man_processstatus AS c
+                                JOIN bk_nodeman.node_man_host AS d ON c.bk_host_id = d.bk_host_id
+                            WHERE
+                            c.proc_type = 'AGENT'
+                            ) AS e
+                        """;
 
                 // 工单筛选
                 case "ticket_filter" -> {
