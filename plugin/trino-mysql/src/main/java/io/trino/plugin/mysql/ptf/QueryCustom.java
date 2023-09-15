@@ -70,35 +70,40 @@ public class QueryCustom
                     NAME,
                     ImmutableList.of(
                             ScalarArgumentSpecification.builder()
-                                .name("QUERY")
-                                .type(VARCHAR)
-                                .defaultValue(null)
-                                .build(),
+                                    .name("QUERY")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
                             ScalarArgumentSpecification.builder()
-                                .name("SCENE")
-                                .type(VARCHAR)
-                                .defaultValue(null)
-                                .build(),
+                                    .name("SCENE")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
                             ScalarArgumentSpecification.builder()
-                                .name("SERVICENAME")
-                                .type(VARCHAR)
-                                .defaultValue(null)
-                                .build(),
+                                    .name("SERVICENAME")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
                             ScalarArgumentSpecification.builder()
-                                .name("STARTTIME")
-                                .type(VARCHAR)
-                                .defaultValue(null)
-                                .build(),
+                                    .name("STARTTIME")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
                             ScalarArgumentSpecification.builder()
-                                .name("ENDTIME")
-                                .type(VARCHAR)
-                                .defaultValue(null)
-                                .build(),
+                                    .name("ENDTIME")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
                             ScalarArgumentSpecification.builder()
-                                .name("TICKETSTATUS")
-                                .type(VARCHAR)
-                                .defaultValue(null)
-                                .build()),
+                                    .name("TICKETSTATUS")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification.builder()
+                                    .name("HOSTNAME")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build()),
                     GENERIC_TABLE);
             this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
         }
@@ -116,15 +121,13 @@ public class QueryCustom
             String service_name = getStringArgument(arguments, "SERVICENAME");
             String start_time = getStringArgument(arguments, "STARTTIME");
             String end_time = getStringArgument(arguments, "ENDTIME");
+            String host_name = getStringArgument(arguments, "HOSTNAME");
 
 
             switch (scene) {
                 // 主机agent信息
-                case "host_agent_info" -> query = """
-                        SELECT
-                           *
-                        FROM
-                            (
+                case "host_agent_info" -> {
+                    query = """
                             SELECT
                                 d.bk_host_name,
                                 d.inner_ip,
@@ -140,8 +143,12 @@ public class QueryCustom
                                 JOIN bk_nodeman.node_man_host AS d ON c.bk_host_id = d.bk_host_id
                             WHERE
                                 c.proc_type = 'AGENT'
-                            ) AS e
-                        """;
+                            """;
+
+                    if (!host_name.isEmpty()) {
+                        query += String.format("AND d.bk_host_name LIKE '%%%s%%'", host_name);
+                    }
+                }
 
                 // 工单筛选
                 case "ticket_filter" -> {
