@@ -103,6 +103,26 @@ public class QueryCustom
                                     .name("HOSTNAME")
                                     .type(VARCHAR)
                                     .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification.builder()
+                                    .name("AGENTSTATUS")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification.builder()
+                                    .name("HOSTOSTYPE")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification.builder()
+                                    .name("BIZID")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build(),
+                            ScalarArgumentSpecification.builder()
+                                    .name("CLOUDID")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
                                     .build()),
                     GENERIC_TABLE);
             this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
@@ -122,6 +142,10 @@ public class QueryCustom
             String start_time = getStringArgument(arguments, "STARTTIME");
             String end_time = getStringArgument(arguments, "ENDTIME");
             String host_name = getStringArgument(arguments, "HOSTNAME");
+            String host_os_type = getStringArgument(arguments, "HOSTOSTYPE");
+            String agent_status = getStringArgument(arguments, "AGENTSTATUS");
+            String bk_biz_id = getStringArgument(arguments, "BIZID");
+            String bk_cloud_id = getStringArgument(arguments, "CLOUDID");
 
 
             switch (scene) {
@@ -133,7 +157,7 @@ public class QueryCustom
                                 d.inner_ip,
                                 d.bk_biz_id,
                                 d.bk_cloud_id,
-                                c.STATUS,
+                                c.status,
                                 c.version,
                                 c.proc_type,
                                 d.os_type,
@@ -147,6 +171,22 @@ public class QueryCustom
 
                     if (!host_name.isEmpty()) {
                         query += String.format("AND d.bk_host_name LIKE '%%%s%%'", host_name);
+                    }
+
+                    if (!host_os_type.isEmpty()) {
+                        query += String.format("AND d.os_type IN (%s)", host_os_type);
+                    }
+
+                    if (!agent_status.isEmpty()) {
+                        query += String.format("AND c.status IN (%s)", agent_status);
+                    }
+
+                    if (!bk_biz_id.isEmpty()) {
+                        query += String.format("AND d.bk_biz_id IN (%s)", bk_biz_id);
+                    }
+
+                    if (!bk_cloud_id.isEmpty()) {
+                        query += String.format("AND d.bk_cloud_id IN (%s)", bk_cloud_id);
                     }
                 }
 
