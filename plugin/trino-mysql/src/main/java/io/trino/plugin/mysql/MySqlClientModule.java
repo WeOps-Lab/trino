@@ -22,7 +22,7 @@ import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.trino.plugin.jdbc.*;
 import io.trino.plugin.jdbc.credential.CredentialProvider;
 import io.trino.plugin.jdbc.ptf.Query;
-import io.trino.plugin.mysql.ptf.QueryITSM;
+import io.trino.plugin.mysql.ptf.QueryCustom;
 import io.trino.spi.function.table.ConnectorTableFunction;
 
 import java.sql.SQLException;
@@ -46,7 +46,7 @@ public class MySqlClientModule
         install(new DecimalModule());
         install(new JdbcJoinPushdownSupportModule());
         newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(Query.class).in(Scopes.SINGLETON);
-        newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(QueryITSM.class).in(Scopes.SINGLETON);
+        newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(QueryCustom.class).in(Scopes.SINGLETON);
     }
 
     @Provides

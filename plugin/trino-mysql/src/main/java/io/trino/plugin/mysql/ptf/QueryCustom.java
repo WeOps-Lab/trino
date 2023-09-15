@@ -38,16 +38,16 @@ import static io.trino.spi.function.table.ReturnTypeSpecification.GenericTable.G
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.util.Objects.requireNonNull;
 
-public class QueryITSM
+public class QueryCustom
         implements Provider<ConnectorTableFunction>
 {
     public static final String SCHEMA_NAME = "system";
-    public static final String NAME = "itsm";
+    public static final String NAME = "custom";
 
     private final JdbcTransactionManager transactionManager;
 
     @Inject
-    public QueryITSM(JdbcTransactionManager transactionManager)
+    public QueryCustom(JdbcTransactionManager transactionManager)
     {
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
     }

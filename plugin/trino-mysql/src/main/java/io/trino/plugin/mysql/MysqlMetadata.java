@@ -15,12 +15,11 @@ package io.trino.plugin.mysql;
 
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import io.trino.plugin.jdbc.*;
 import io.trino.plugin.jdbc.ptf.Procedure.ProcedureFunctionHandle;
 import io.trino.plugin.jdbc.ptf.Query.QueryFunctionHandle;
-import io.trino.plugin.mysql.ptf.QueryITSM.ITSMQueryFunctionHandle;
+import io.trino.plugin.mysql.ptf.QueryCustom.ITSMQueryFunctionHandle;
 
 import io.trino.spi.connector.*;
 
