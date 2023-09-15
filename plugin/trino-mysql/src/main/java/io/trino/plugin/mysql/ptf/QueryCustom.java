@@ -119,13 +119,10 @@ public class QueryCustom
 
 
             switch (scene) {
-                // 主机agent状态统计
+                // 主机agent状态
                 case "agent_status" -> query = """
                         SELECT
-                            COUNT(*) AS host_count,
-                            SUM( CASE WHEN e.STATUS = 'RUNNING' THEN 1 ELSE 0 END ) AS running_count,
-                            SUM( CASE WHEN e.STATUS = 'NOT_INSTALLED' THEN 1 ELSE 0 END ) AS not_installed_count,
-                            SUM( CASE WHEN e.STATUS NOT IN ( 'RUNNING', 'NOT_INSTALLED' ) THEN 1 ELSE 0 END ) AS other_count
+                           *
                         FROM
                             (
                             SELECT
