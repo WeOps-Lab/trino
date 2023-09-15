@@ -43,8 +43,6 @@ public class QueryITSM
 {
     public static final String SCHEMA_NAME = "system";
     public static final String NAME = "itsm";
-    public static final String DATABASE = "bk_itsm";
-    public static final String TICKET_TABLE = "ticket_ticket";
 
     private final JdbcTransactionManager transactionManager;
 
@@ -87,15 +85,15 @@ public class QueryITSM
                                 .defaultValue(null)
                                 .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("STARTTIME")
-                                    .type(VARCHAR)
-                                    .defaultValue(null)
-                                    .build(),
+                                .name("STARTTIME")
+                                .type(VARCHAR)
+                                .defaultValue(null)
+                                .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("ENDTIME")
-                                    .type(VARCHAR)
-                                    .defaultValue(null)
-                                    .build(),
+                                .name("ENDTIME")
+                                .type(VARCHAR)
+                                .defaultValue(null)
+                                .build(),
                             ScalarArgumentSpecification.builder()
                                 .name("TICKETSTATUS")
                                 .type(VARCHAR)
@@ -155,7 +153,7 @@ public class QueryITSM
                             FROM
                                 bk_itsm.ticket_ticket AS ticket
                                 JOIN bk_itsm.service_service AS service ON ticket.service_id = service.id
-                                JOIN bk_itsm.ticket__ticketuser_current_processors AS processors ON ticket.id = processors.ticket_id
+                                LEFT JOIN bk_itsm.ticket__ticketuser_current_processors AS processors ON ticket.id = processors.ticket_id
                                 JOIN (
                                     SELECT
                                         t1.ticket_id,
