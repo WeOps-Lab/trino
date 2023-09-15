@@ -119,22 +119,27 @@ public class QueryCustom
 
 
             switch (scene) {
-                // 主机agent状态
-                case "agent_status" -> query = """
+                // 主机agent信息
+                case "host_agent_info" -> query = """
                         SELECT
                            *
                         FROM
                             (
                             SELECT
-                                c.bk_host_id,
-                                c.STATUS,
+                                d.bk_host_name,
+                                d.inner_ip,
                                 d.bk_biz_id,
-                                d.bk_host_name
+                                d.bk_cloud_id,
+                                c.STATUS,
+                                c.version,
+                                c.proc_type,
+                                d.os_type,
+                                d.cpu_arch
                             FROM
                                 bk_nodeman.node_man_processstatus AS c
                                 JOIN bk_nodeman.node_man_host AS d ON c.bk_host_id = d.bk_host_id
                             WHERE
-                            c.proc_type = 'AGENT'
+                                c.proc_type = 'AGENT'
                             ) AS e
                         """;
 
