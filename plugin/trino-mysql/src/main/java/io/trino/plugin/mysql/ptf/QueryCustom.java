@@ -80,47 +80,47 @@ public class QueryCustom
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("SERVICENAME")
+                                    .name("SERVICE_NAME")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("STARTTIME")
+                                    .name("START_TIME")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("ENDTIME")
+                                    .name("END_TIME")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("TICKETSTATUS")
+                                    .name("TICKET_STATUS")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("HOSTNAME")
+                                    .name("HOST_NAME")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("AGENTSTATUS")
+                                    .name("AGENT_STATUS")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("HOSTOSTYPE")
+                                    .name("HOST_OS_TYPE")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("BIZID")
+                                    .name("BK_BIZ_ID")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("CLOUDID")
+                                    .name("CLOUD_ID")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build()),
@@ -137,15 +137,15 @@ public class QueryCustom
         {
             String query = getStringArgument(arguments, "QUERY");
             String scene = getStringArgument(arguments, "SCENE");
-            String ticket_status = getStringArgument(arguments, "TICKETSTATUS");
-            String service_name = getStringArgument(arguments, "SERVICENAME");
-            String start_time = getStringArgument(arguments, "STARTTIME");
-            String end_time = getStringArgument(arguments, "ENDTIME");
-            String host_name = getStringArgument(arguments, "HOSTNAME");
-            String host_os_type = getStringArgument(arguments, "HOSTOSTYPE");
-            String agent_status = getStringArgument(arguments, "AGENTSTATUS");
-            String bk_biz_id = getStringArgument(arguments, "BIZID");
-            String bk_cloud_id = getStringArgument(arguments, "CLOUDID");
+            String ticket_status = getStringArgument(arguments, "TICKET_STATUS");
+            String service_name = getStringArgument(arguments, "SERVICE_NAME");
+            String start_time = getStringArgument(arguments, "START_TIME");
+            String end_time = getStringArgument(arguments, "END_TIME");
+            String host_name = getStringArgument(arguments, "HOST_NAME");
+            String host_os_type = getStringArgument(arguments, "HOST_OS_TYPE");
+            String agent_status = getStringArgument(arguments, "AGENT_STATUS");
+            String bk_biz_id = getStringArgument(arguments, "BK_BIZ_ID");
+            String bk_cloud_id = getStringArgument(arguments, "CLOUD_ID");
 
 
             switch (scene) {
