@@ -82,7 +82,7 @@ public class QueryCMDB
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("BKOBJID")
+                                    .name("BK_OBJ_ID")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
@@ -115,7 +115,7 @@ public class QueryCMDB
 
             String database =getStringArgument(arguments, "DATABASE");
             String biz = getStringArgument(arguments, "BIZ");
-            String objectName = getStringArgument(arguments, "BKOBJID");
+            String objectName = getStringArgument(arguments, "BK_OBJ_ID");
             String filter = getStringArgument(arguments, "FILTER");
             String fields = getStringArgument(arguments, "FIELDS");
             String regex = getStringArgument(arguments, "REGEX");
