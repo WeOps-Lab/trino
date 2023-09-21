@@ -84,7 +84,7 @@ public class RawQuery
                                     .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification.builder()
-                                    .name("BK_DATA_ID")
+                                    .name("SCENE")
                                     .type(VARCHAR)
                                     .defaultValue(null)
                                     .build(),
@@ -128,7 +128,7 @@ public class RawQuery
             String schema = getStringArgument(arguments, "SCHEMA");
             String query = getStringArgument(arguments, "QUERY");
 
-            String bk_data_id = getStringArgument(arguments, "BK_DATA_ID");
+            String scene = getStringArgument(arguments, "SCENE");
             String start_time = getStringArgument(arguments, "START_TIME");
             String end_time = getStringArgument(arguments, "END_TIME");
             String metric = getStringArgument(arguments, "METRIC");
@@ -136,65 +136,66 @@ public class RawQuery
             String group_by = getStringArgument(arguments, "GROUP_BY");
             boolean calFunction = function.equals("mean") || function.equals("min") || function.equals("max");
 
-            if (!calFunction){
-                return TableFunctionAnalysis.builder().build();
-            }
-
-            // 默认7天
-            if (start_time.isEmpty() || end_time.isEmpty()) {
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
-
-                // 格式化时间为所需的格式
-                start_time = LocalDateTime.now().minusDays(7).format(formatter);
-                end_time = LocalDateTime.now().format(formatter);
-            }
-
-            // 主机性能指标
-            if (bk_data_id.equals("host")) {
-                schema = "system";
-                if (metric.equals("cpu_info")) {
-                    metric = "usage";
-                    index = "cpu_summary";
-                } else if (metric.equals("memory_info")) {
-                    metric = "pct_used";
-                    index = "mem";
+            // 封装场景
+            if (query.isEmpty()) {
+                if (!calFunction){
+                    return TableFunctionAnalysis.builder().build();
                 }
 
-                query += String.format("""
-                    SELECT
-                        %s(%s) as %s
-                    FROM
-                        %s
-                    WHERE
-                      time>'%s'
-                      AND time<'%s'\s
-                      """, function, metric, metric, index, start_time, end_time);
+                // 默认7天
+                if (start_time.isEmpty() || end_time.isEmpty()) {
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
 
-                if (group_by.isEmpty()) {
-                    group_by += "hostname, ip, bk_cloud_id, bk_biz_id";
-                }else {
-                    group_by += " ,hostname, ip, bk_cloud_id, bk_biz_id";
+                    // 格式化时间为所需的格式
+                    start_time = LocalDateTime.now().minusDays(7).format(formatter);
+                    end_time = LocalDateTime.now().format(formatter);
                 }
-            }else {
-                query += String.format("""
-                    SELECT
-                        time, metric_name, %s(metric_value) as metric_value
-                    FROM
-                        %s
-                    WHERE
-                      time>'%s'
-                      AND time<'%s'
-                      AND metric_name='%s'\s
-                      """, function, index, start_time, end_time, metric);
-            }
 
+                // 主机性能指标
+                if (scene.equals("host")) {
+                    schema = "system";
+                    if (metric.equals("cpu_info")) {
+                        metric = "usage";
+                        index = "cpu_summary";
+                    } else if (metric.equals("memory_info")) {
+                        metric = "pct_used";
+                        index = "mem";
+                    }
 
+                    query += String.format("""
+                            SELECT
+                                %s(%s) as %s
+                            FROM
+                                %s
+                            WHERE
+                              time>'%s'
+                              AND time<'%s'\s
+                              """, function, metric, metric, index, start_time, end_time);
 
-            if (!group_by.isEmpty()) {
-                query += String.format("""
-                        GROUP BY
-                            %s
-                        """, group_by);
+                    if (group_by.isEmpty()) {
+                        group_by += "hostname, ip, bk_cloud_id, bk_biz_id";
+                    } else {
+                        group_by += " ,hostname, ip, bk_cloud_id, bk_biz_id";
+                    }
+                } else if(scene.equals("plugin")) {
+                    query += String.format("""
+                            SELECT
+                                %s(metric_value) as metric_value
+                            FROM
+                                %s
+                            WHERE
+                              time>'%s'
+                              AND time<'%s'
+                              AND metric_name = '%s'\s
+                              """, function, index, start_time, end_time, metric);
+                }
+
+                if (!group_by.isEmpty()) {
+                    query += String.format("""
+                            GROUP BY
+                                %s
+                            """, group_by);
+                }
             }
 
             InfluxTableHandle tableHandle = new InfluxTableHandle(schema, index, ImmutableList.of(), Optional.of(query));
