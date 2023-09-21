@@ -174,11 +174,11 @@ public class QueryCustom
                     }
 
                     if (!host_os_type.isEmpty()) {
-                        query += String.format("AND d.os_type IN (%s)", host_os_type);
+                        query += String.format("AND d.os_type IN (%s)", splictInClause(host_os_type));
                     }
 
                     if (!agent_status.isEmpty()) {
-                        query += String.format("AND c.status IN (%s)", agent_status);
+                        query += String.format("AND c.status IN (%s)", splictInClause(agent_status));
                     }
 
                     if (!bk_biz_id.isEmpty()) {
@@ -239,20 +239,7 @@ public class QueryCustom
                     }
 
                     if (!ticket_status.isEmpty()) {
-                        // 将逗号分隔的字符串分割成字符串数组
-                        String[] statusArray = ticket_status.split(",");
-                        // 构建 IN 子句
-                        StringBuilder ticketInClause = new StringBuilder();
-                        for (int i = 0; i < statusArray.length; i++) {
-                            ticketInClause.append("'");
-                            ticketInClause.append(statusArray[i].trim()); // 移除首尾空格
-                            ticketInClause.append("'");
-                            if (i < statusArray.length - 1) {
-                                ticketInClause.append(", "); // 添加逗号分隔符
-                            }
-                        }
-
-                        query += String.format("AND current_status IN (%s)", ticketInClause);
+                        query += String.format("AND current_status IN (%s)", splictInClause(ticket_status));
                     }
 
                     if (!start_time.isEmpty()) {
@@ -298,6 +285,23 @@ public class QueryCustom
     private static String getStringArgument(Map<String, Argument> arguments, String argName) {
         Slice slice = ((Slice) ((ScalarArgument) arguments.get(argName)).getValue());
         return slice != null ? slice.toStringUtf8() : "";
+    }
+
+    private static StringBuilder splictInClause(String inputString){
+
+        // 将逗号分隔的字符串分割成字符串数组
+        String[] stringArray = inputString.split(",");
+        // 构建 IN 子句
+        StringBuilder stringInClause = new StringBuilder();
+        for (int i = 0; i < stringArray.length; i++) {
+            stringInClause.append("'");
+            stringInClause.append(stringArray[i].trim()); // 移除首尾空格
+            stringInClause.append("'");
+            if (i < stringArray.length - 1) {
+                stringInClause.append(", "); // 添加逗号分隔符
+            }
+        }
+        return stringInClause;
     }
 
     public static class ITSMQueryFunctionHandle
