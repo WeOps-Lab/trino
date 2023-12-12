@@ -41,7 +41,6 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.plugin.influxdb.TypeUtils.isPushdownSupportedType;
 
 import io.trino.plugin.influxdb.ptf.RawQuery.RawQueryFunctionHandle;
-
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DoubleType.DOUBLE;
@@ -150,6 +149,9 @@ public class InfluxMetadata
             ConnectorTableHandle handle,
             Constraint constraint) {
         InfluxTableHandle tableHandle = (InfluxTableHandle) handle;
+        if(tableHandle.getQuery().isPresent()){
+            return Optional.empty();
+        }
         TupleDomain<ColumnHandle> oldDomain = tableHandle.getConstraint();
         TupleDomain<ColumnHandle> newDomain = oldDomain.intersect(constraint.getSummary());
         TupleDomain<ColumnHandle> remainingFilter;
