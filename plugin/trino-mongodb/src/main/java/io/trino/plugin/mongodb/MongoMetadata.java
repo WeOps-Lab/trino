@@ -25,6 +25,7 @@ import io.trino.plugin.base.projection.ApplyProjectionUtil;
 import io.trino.plugin.mongodb.MongoIndex.MongodbIndexKey;
 import io.trino.plugin.mongodb.ptf.Query.QueryFunctionHandle;
 import io.trino.plugin.mongodb.ptf.QueryCMDB.CMDBQueryFunctionHandle;
+import io.trino.plugin.mongodb.ptf.QueryBiz.CMDBBizQueryFunctionHandle;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.Assignment;
 import io.trino.spi.connector.ColumnHandle;
@@ -788,11 +789,18 @@ public class MongoMetadata
     @Override
     public Optional<TableFunctionApplicationResult<ConnectorTableHandle>> applyTableFunction(ConnectorSession session, ConnectorTableFunctionHandle handle)
     {
-        if (!(handle instanceof QueryFunctionHandle)&&!(handle instanceof CMDBQueryFunctionHandle)) {
+        if (!(handle instanceof QueryFunctionHandle)&&!(handle instanceof CMDBQueryFunctionHandle)&&!(handle instanceof CMDBBizQueryFunctionHandle)) {
             return Optional.empty();
         }
         if (handle instanceof CMDBQueryFunctionHandle) {
             ConnectorTableHandle tableHandle = ((CMDBQueryFunctionHandle) handle).getTableHandle();
+            List<ColumnHandle> columnHandles = getColumnHandles(session, tableHandle).values().stream()
+                    .filter(column -> !((MongoColumnHandle) column).isHidden())
+                    .collect(toImmutableList());
+            return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+        }
+        if (handle instanceof CMDBBizQueryFunctionHandle) {
+            ConnectorTableHandle tableHandle = ((CMDBBizQueryFunctionHandle) handle).getTableHandle();
             List<ColumnHandle> columnHandles = getColumnHandles(session, tableHandle).values().stream()
                     .filter(column -> !((MongoColumnHandle) column).isHidden())
                     .collect(toImmutableList());
