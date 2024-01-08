@@ -32,7 +32,7 @@ public final class ColumnSchema
         checkNotEmpty(name, "name");
         requireNonNull(type, "type is null");
 
-        this.name = name.toLowerCase(ENGLISH);
+        this.name = name;
         this.type = type;
         this.hidden = hidden;
     }
