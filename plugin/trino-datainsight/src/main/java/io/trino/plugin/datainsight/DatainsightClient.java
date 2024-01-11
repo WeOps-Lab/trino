@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ForwardingQueue;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -48,6 +49,9 @@ import org.weakref.jmx.Nested;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -537,7 +541,7 @@ public class DatainsightClient {
         );
     }
 
-    public String getIndexesByMongo(Optional<String> streams) {
+    public String getIndexesByMongo(Optional<String> streams, String startTime, String endTime) {
         boolean filter;
         if (streams.get() == "" || streams == null || streams.get() == "ALL") {
             //获取全部的索引
@@ -545,6 +549,7 @@ public class DatainsightClient {
         } else {
             filter = true;
         }
+
         MongoDatabase db = mongoClient.getDatabase(mongoDb);
         // 给数组元素添加双引号
         List<String> streamList = Arrays.stream(streams.get().split(",")).toList();
@@ -556,66 +561,109 @@ public class DatainsightClient {
         } else {
             dbFilter = Filters.empty();
         }
-        Map<String, String> streamIdTitleMap = new HashMap<>();
         Map<String, String> streamTitleIndexSeIdtMap = new HashMap<>();
-        db.getCollection("streams").find(dbFilter).forEach((Document doc) -> {
-            streamTitleIndexSeIdtMap.put(doc.getString("title"), doc.getString("index_set_id"));
+        List<String> streamIds = new ArrayList<>();
+
+        db.getCollection("streams").find(dbFilter).forEach((Document stream) -> {
+            streamTitleIndexSeIdtMap.put(stream.getString("title"), stream.getString("index_set_id"));
+            streamIds.add(stream.get("_id").toString());
+
         });
+
         List<String> indexNames = new ArrayList<>();
+        List<String> indexPrefixes = new ArrayList<>();
         // _id in (index_set_id1, index_set_id2, ...) id是objectid类型，要转化
         Bson indexSetFilter = Filters.in("_id", streamTitleIndexSeIdtMap.values().stream().map(id -> new org.bson.types.ObjectId(id)).toList());
         db.getCollection("index_sets").find(indexSetFilter).forEach((Document indexSet) -> {
                     String indexPrefix = indexSet.getString("index_prefix");
-                    indexNames.add(String.format("%s_*", indexPrefix));
+                    indexPrefixes.add(indexPrefix);
                 }
         );
-        String indexNamesString = String.join(",", indexNames);
-        System.out.println(indexNamesString);
-        return indexNamesString;
-    }
+        List<String> allIndexNames = new ArrayList<>();
 
-    @Managed
-    @Nested
-    public TimeStat getSearchStats() {
-        return searchStats;
-    }
+        db.getCollection("index_ranges").find(indexSetFilter).forEach((Document indexRange) -> {
+                    String index_name = indexRange.getString("index_name");
+                    allIndexNames.add(index_name);
+                }
+        );
+        Document indexRangeFilter = new Document();
+        indexRangeFilter.append("stream_ids", new Document("$in", streamIds));
+        if (startTime != null && !endTime.isEmpty() && endTime != null && !endTime.isEmpty()) {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            LocalDateTime localStartTime = LocalDateTime.parse(startTime, formatter);
+            LocalDateTime localEndTime = LocalDateTime.parse(endTime, formatter);
+            long startTs = localStartTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            ;
+            long endTs = localEndTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            ;
+            indexRangeFilter.append("begin", new Document("$lte", endTs));
+            indexRangeFilter.append("end", new Document("$gte", startTs));
+            db.getCollection("index_ranges").find(indexRangeFilter).forEach((Document indexRange) -> {
+                        String indexName = indexRange.getString("index_name");
+                        indexNames.add(indexName);
+                    }
+            );
+            for (String indexPrefix : indexPrefixes) {
+                String defaultIndexName = String.format("%s_0", indexPrefix);
+                if (allIndexNames.contains(defaultIndexName)) {
+                    indexNames.add(defaultIndexName);
+                }
+            }
+            } else{
 
-    @Managed
-    @Nested
-    public TimeStat getNextPageStats() {
-        return nextPageStats;
-    }
-
-    @Managed
-    @Nested
-    public TimeStat getCountStats() {
-        return countStats;
-    }
-
-    @Managed
-    @Nested
-    public TimeStat getBackpressureStats() {
-        return backpressureStats;
-    }
-
-
-    private <T> T doRequest(String method, String path, Optional<String> entityString, ResponseHandler<T> handler) {
-        String response;
-        try {
-            String key = cache.generateKey(method + path + (entityString == null ? "" : entityString));
-            response = cache.get(key);
-
-            if (response == null) {
-                response = client.performRequest(method, path, entityString);
-                cache.put(key, response, cacheExpireTime);
-                LOG.info(String.format("response api success and set cache ,key:%s，method:%s,path:%s,entity:%s", key, method, path, entityString));
+                for (String indexPrefix : indexPrefixes) {
+                    indexNames.add(String.format("%s_*", indexPrefix));
+                }
             }
 
-        } catch (IOException e) {
-            throw new TrinoException(DATAINSIGHT_CONNECTION_ERROR, e);
+            String indexNamesString = String.join(",", indexNames);
+            System.out.println(indexNamesString);
+            return indexNamesString;
         }
-        return handler.process(response);
-    }
+
+        @Managed
+        @Nested
+        public TimeStat getSearchStats () {
+            return searchStats;
+        }
+
+        @Managed
+        @Nested
+        public TimeStat getNextPageStats () {
+            return nextPageStats;
+        }
+
+        @Managed
+        @Nested
+        public TimeStat getCountStats () {
+            return countStats;
+        }
+
+        @Managed
+        @Nested
+        public TimeStat getBackpressureStats () {
+            return backpressureStats;
+        }
+
+
+        private <T > T
+        doRequest(String method, String path, Optional < String > entityString, ResponseHandler < T > handler) {
+            String response;
+            try {
+                String key = cache.generateKey(method + path + (entityString == null ? "" : entityString));
+                response = cache.get(key);
+
+                if (response == null) {
+                    response = client.performRequest(method, path, entityString);
+                    cache.put(key, response, cacheExpireTime);
+                    LOG.info(String.format("response api success and set cache ,key:%s，method:%s,path:%s,entity:%s", key, method, path, entityString));
+                }
+
+            } catch (IOException e) {
+                throw new TrinoException(DATAINSIGHT_CONNECTION_ERROR, e);
+            }
+            return handler.process(response);
+        }
 
 
 //    private static TrinoException propagate(ResponseException exception) {
@@ -641,32 +689,32 @@ public class DatainsightClient {
 //        throw new TrinoException(DATAINSIGHT_QUERY_FAILURE, exception);
 //    }
 
-    @VisibleForTesting
-    static Optional<String> extractAddress(String address) {
-        Matcher matcher = ADDRESS_PATTERN.matcher(address);
+        @VisibleForTesting
+        static Optional<String> extractAddress (String address){
+            Matcher matcher = ADDRESS_PATTERN.matcher(address);
 
-        if (!matcher.matches()) {
-            return Optional.empty();
+            if (!matcher.matches()) {
+                return Optional.empty();
+            }
+
+            String cname = matcher.group("cname");
+            String ip = matcher.group("ip");
+            String port = matcher.group("port");
+
+            if (cname != null) {
+                return Optional.of(cname + ":" + port);
+            }
+
+            return Optional.of(ip + ":" + port);
         }
 
-        String cname = matcher.group("cname");
-        String ip = matcher.group("ip");
-        String port = matcher.group("port");
-
-        if (cname != null) {
-            return Optional.of(cname + ":" + port);
+        public boolean indexExists (String table){
+            // TODO: 2023/9/5
+            return true;
         }
 
-        return Optional.of(ip + ":" + port);
-    }
 
-    public boolean indexExists(String table) {
-        // TODO: 2023/9/5
-        return true;
+        private interface ResponseHandler<T> {
+            T process(String body);
+        }
     }
-
-
-    private interface ResponseHandler<T> {
-        T process(String body);
-    }
-}

@@ -21,6 +21,7 @@ import io.airlift.slice.Slice;
 import io.trino.plugin.datainsight.*;
 import io.trino.plugin.datainsight.DatainsightTableHandle.Type;
 
+import io.trino.spi.TrinoException;
 import io.trino.spi.connector.*;
 import io.trino.spi.function.table.*;
 
@@ -28,6 +29,7 @@ import java.util.*;
 import java.util.stream.Stream;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static io.trino.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import static io.trino.spi.function.table.ReturnTypeSpecification.GenericTable.GENERIC_TABLE;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.util.Objects.requireNonNull;
@@ -72,9 +74,30 @@ public class Query
                             ScalarArgumentSpecification.builder()
                                     .name("QUERY")
                                     .type(VARCHAR)
-                                    .build()),
+                                    .build()
+                            ,
+                            ScalarArgumentSpecification.builder()
+                                    .name("START_TIME")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build()
+                            ,
+                            ScalarArgumentSpecification.builder()
+                                    .name("END_TIME")
+                                    .type(VARCHAR)
+                                    .defaultValue(null)
+                                    .build()
+
+                    ),
+
                     GENERIC_TABLE);
+
             this.metadata = requireNonNull(metadata, "metadata is null");
+        }
+
+        private static String getStringArgument(Map<String, Argument> arguments, String argName) {
+            Slice slice = ((Slice) ((ScalarArgument) arguments.get(argName)).getValue());
+            return slice != null ? slice.toStringUtf8() : null;
         }
 
         @Override
@@ -87,11 +110,16 @@ public class Query
             String streams = ((Slice) ((ScalarArgument) arguments.get("STREAMS")).getValue()).toStringUtf8();
             String query = ((Slice) ((ScalarArgument) arguments.get("QUERY")).getValue()).toStringUtf8();
             String type = ((Slice) ((ScalarArgument) arguments.get("TYPE")).getValue()).toStringUtf8();
+            String startTime = getStringArgument(arguments, "START_TIME");
+            String endTime = getStringArgument(arguments, "END_TIME");
             Type sType = Type.valueOf(type.toUpperCase(Locale.ENGLISH));
-            String index = metadata.getIndexesByMongo(Optional.of(streams));
+            String index = metadata.getIndexesByMongo(Optional.of(streams), startTime, endTime);
+            if(index.isEmpty()){
+                throw new TrinoException(INVALID_FUNCTION_ARGUMENT, "index not found,please check your arguments[`streams`，`start_time`,`end_time`]");
+            }
             query = query.replace("$index", index);
             DatainsightTableHandle tableHandle = new DatainsightTableHandle(sType, SCHEMA_NAME, index, Optional.of(query));
-            Map<String, ColumnHandle> columnsByName =metadata.getColumnHandles(session, tableHandle);
+            Map<String, ColumnHandle> columnsByName = metadata.getColumnHandles(session, tableHandle);
             // 构建columns List,按照columnHandle type的顺序
             List<ColumnHandle> columns = columnsByName.values().stream().sorted(Comparator.comparing(column -> ((DatainsightColumnHandle) column).getIndex())).collect(toImmutableList());
 
