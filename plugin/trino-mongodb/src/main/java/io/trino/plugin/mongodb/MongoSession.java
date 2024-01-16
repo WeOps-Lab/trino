@@ -67,14 +67,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -743,14 +736,35 @@ public class MongoSession
         Document doc = schema
                 .find(new Document(TABLE_NAME_KEY, tableName)).first();
 
-        if (doc == null) {
+        List<Document> guessedTableFields = guessTableFields(schemaName, tableName);
+
+        List<Document> schemaFieldList = null;
+        if (doc != null) {
+            schemaFieldList = (List<Document>) doc.get(FIELDS_KEY);
+        }
+
+        // 检查_schema表是否存在，原表和_schema表fields字段长度是否一致，字段是否完全一致
+        if (doc == null
+                || schemaFieldList == null
+                || schemaFieldList.size() != guessedTableFields.size()
+                || !new HashSet<>(schemaFieldList).containsAll(guessedTableFields)) {
+
+            // 检查原始table是否存在
             if (!collectionExists(db, tableName)) {
                 throw new TableNotFoundException(new SchemaTableName(schemaName, tableName), format("Table '%s.%s' not found", schemaName, tableName), null);
             }
+
+            // 新建数据插入_schema表，存fields、table字段
             Document metadata = new Document(TABLE_NAME_KEY, tableName);
-            metadata.append(FIELDS_KEY, guessTableFields(schemaName, tableName));
+            metadata.append(FIELDS_KEY, guessedTableFields);
+
             if (!indexExists(schema)) {
                 schema.createIndex(new Document(TABLE_NAME_KEY, 1), new IndexOptions().unique(true));
+            }
+
+            // 如果已存在，重新插入
+            if (doc != null) {
+                schema.deleteOne(doc);
             }
 
             schema.insertOne(metadata);
@@ -832,7 +846,8 @@ public class MongoSession
     private List<Document> guessTableFields(String schemaName, String tableName)
     {
         MongoDatabase db = client.getDatabase(schemaName);
-        Document doc = db.getCollection(tableName).find().first();
+        // 需要从最新的数据开始
+        Document doc = db.getCollection(tableName).find().sort(new Document("_id", -1)).first();
         if (doc == null) {
             // no records at the collection
             return ImmutableList.of();
