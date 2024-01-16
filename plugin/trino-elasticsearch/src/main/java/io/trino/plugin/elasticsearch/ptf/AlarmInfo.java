@@ -61,11 +61,13 @@ public class AlarmInfo implements Provider<ConnectorTableFunction> {
                             ScalarArgumentSpecification.builder()
                                     .name("SCHEMA")
                                     .type(VARCHAR)
+                                    .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification
                                     .builder()
                                     .name("INDEX")
                                     .type(VARCHAR)
+                                    .defaultValue(null)
                                     .build(),
                             ScalarArgumentSpecification
                                     .builder()
@@ -213,6 +215,16 @@ public class AlarmInfo implements Provider<ConnectorTableFunction> {
             StringBuilder sortString = new StringBuilder();
             StringBuilder sizeString = new StringBuilder();
             StringBuilder fieldsString = new StringBuilder();
+
+            // 默认填写schema
+            if (schema==null) {
+                schema="default";
+            }
+
+            // 默认填写告警index
+            if (index==null) {
+                index="cw_uac_alarm_event";
+            }
 
             if (sort != null) {
                 sortString.append(parseSortString(sort));
