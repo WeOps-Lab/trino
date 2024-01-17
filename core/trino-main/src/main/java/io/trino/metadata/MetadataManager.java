@@ -483,7 +483,7 @@ public final class MetadataManager
 
         ImmutableMap.Builder<String, ColumnHandle> map = ImmutableMap.builder();
         for (Entry<String, ColumnHandle> mapEntry : handles.entrySet()) {
-            map.put(mapEntry.getKey().toLowerCase(ENGLISH), mapEntry.getValue());
+            map.put(mapEntry.getKey(), mapEntry.getValue());
         }
         return map.buildOrThrow();
     }
