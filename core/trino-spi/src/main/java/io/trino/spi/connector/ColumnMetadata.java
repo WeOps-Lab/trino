@@ -48,7 +48,7 @@ public class ColumnMetadata
         requireNonNull(type, "type is null");
         requireNonNull(properties, "properties is null");
 
-        this.name = name.toLowerCase(ENGLISH);
+        this.name = name;
         this.type = type;
         this.comment = comment;
         this.extraInfo = extraInfo;
