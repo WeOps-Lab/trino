@@ -630,8 +630,8 @@ public class DatainsightMetadata
         return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
     }
 
-    public String getIndexesByMongo(Optional<String> streams) {
-        return client.getIndexesByMongo(streams);
+    public String getIndexesByMongo(Optional<String> streams,String startTime,String endTime) {
+        return client.getIndexesByMongo(streams,startTime,endTime);
     }
 
     public DatainsightRecord getPluginResult(String pluginName, String query) {
