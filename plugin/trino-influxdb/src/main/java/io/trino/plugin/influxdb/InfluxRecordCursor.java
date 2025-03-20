@@ -75,7 +75,8 @@ public class InfluxRecordCursor
         for (List<Object> record : recordSet) {
             List<Object> alignedRecord = Lists.newArrayListWithExpectedSize(names.size());
             for (String name : names) {
-                Object value = record.get(nameIdxMap.get(name));
+                Integer index = nameIdxMap.get(name);
+                Object value = index != null ? record.get(index) : null;
                 alignedRecord.add(value);
             }
             alignedRecordSet.add(alignedRecord);
