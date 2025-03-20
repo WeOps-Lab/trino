@@ -93,7 +93,21 @@ public class NativeInfluxClient
 
             if (result.getSeries().size() == 1) {
                 Series series = getOnlyElement(result.getSeries());
-                return new InfluxRecord(series.getColumns(), series.getValues());
+                if (series.getTags() != null) {
+                    ImmutableList.Builder<String> columns = builder();
+                    columns.addAll(series.getColumns());
+                    columns.addAll(series.getTags().keySet());
+                    List<List<Object>> values = new ArrayList<>();
+                    for (List<Object> seriesValue : series.getValues()) {
+                        List<Object> value = new ArrayList<>();
+                        value.addAll(seriesValue);
+                        value.addAll(series.getTags().values());
+                        values.add(value);
+                    }
+                    return new InfluxRecord(columns.build(), values);
+                } else {
+                    return new InfluxRecord(series.getColumns(), series.getValues());
+                }
             } else {
                 ImmutableList.Builder<String> columns = builder();
                 List<List<Object>> values = new ArrayList<>();
