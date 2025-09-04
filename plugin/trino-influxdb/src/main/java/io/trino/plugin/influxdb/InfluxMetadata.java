@@ -45,6 +45,10 @@ import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.VarcharType.VARCHAR;
+import static io.trino.spi.type.TimestampType.TIMESTAMP_NANOS;
+import static io.trino.plugin.influxdb.InfluxConstant.ColumnName.TIME;
+import static io.trino.plugin.influxdb.InfluxConstant.ColumnKind;
+import io.trino.spi.type.Type;
 import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
@@ -216,14 +220,47 @@ public class InfluxMetadata
         }
 
         ConnectorTableHandle tableHandle = ((RawQueryFunctionHandle) handle).getTableHandle();
-        ConnectorTableSchema tableSchema = getTableSchema(session, tableHandle);
-        Map<String, ColumnHandle> columnHandlesByName = getColumnHandles(session, tableHandle);
-        List<ColumnHandle> columnHandles = tableSchema.getColumns().stream()
-                .map(ColumnSchema::getName)
-                .map(columnHandlesByName::get)
-                .collect(toImmutableList());
+        InfluxTableHandle influxTableHandle = (InfluxTableHandle) tableHandle;
 
-        return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+        // If the table handle has a custom query, we need to execute it to get the actual column schema
+        if (influxTableHandle.getQuery().isPresent()) {
+            String query = influxTableHandle.getQuery().get();
+            String schema = influxTableHandle.getSchemaName();
+
+            try {
+                // Execute the query to get actual result columns
+                org.influxdb.dto.Query influxQuery = new org.influxdb.dto.Query(query, schema);
+                InfluxRecord queryResult = client.query(influxQuery);
+
+                // Create column handles based on actual query result columns
+                List<ColumnHandle> columnHandles = queryResult.getColumns().stream()
+                        .map(columnName -> new InfluxColumnHandle(columnName, inferColumnType(columnName, queryResult), inferColumnKind(columnName)))
+                        .map(ColumnHandle.class::cast)
+                        .collect(toImmutableList());
+
+                return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+            } catch (Exception e) {
+                // Fallback to original behavior if query execution fails
+                ConnectorTableSchema tableSchema = getTableSchema(session, tableHandle);
+                Map<String, ColumnHandle> columnHandlesByName = getColumnHandles(session, tableHandle);
+                List<ColumnHandle> columnHandles = tableSchema.getColumns().stream()
+                        .map(ColumnSchema::getName)
+                        .map(columnHandlesByName::get)
+                        .collect(toImmutableList());
+
+                return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+            }
+        } else {
+            // Use original behavior for non-custom queries
+            ConnectorTableSchema tableSchema = getTableSchema(session, tableHandle);
+            Map<String, ColumnHandle> columnHandlesByName = getColumnHandles(session, tableHandle);
+            List<ColumnHandle> columnHandles = tableSchema.getColumns().stream()
+                    .map(ColumnSchema::getName)
+                    .map(columnHandlesByName::get)
+                    .collect(toImmutableList());
+
+            return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+        }
     }
 
     private Optional<ConnectorTableMetadata> getTableMetadata(SchemaTableName schemaTableName) {
@@ -272,5 +309,57 @@ public class InfluxMetadata
 
     private static boolean isRangeSupportsTimestamp(List<Range> ranges) {
         return ranges.stream().allMatch(range -> range.getType() instanceof TimestampType);
+    }
+
+    /**
+     * Infer the column type based on the column name and query result data.
+     * This is used for dynamic column schema resolution in raw_query functions.
+     */
+    private Type inferColumnType(String columnName, InfluxRecord queryResult) {
+        // Time column is always timestamp
+        if (columnName.equals(TIME.getName())) {
+            return TIMESTAMP_NANOS;
+        }
+
+        // Try to infer type from the actual data values
+        if (!queryResult.getValues().isEmpty()) {
+            List<Object> firstRow = queryResult.getValues().get(0);
+            int columnIndex = queryResult.getColumns().indexOf(columnName);
+
+            if (columnIndex >= 0 && columnIndex < firstRow.size()) {
+                Object value = firstRow.get(columnIndex);
+                if (value instanceof Number) {
+                    return DOUBLE; // Default numeric type for InfluxDB
+                }
+                if (value instanceof Boolean) {
+                    return BOOLEAN;
+                }
+                if (value instanceof String) {
+                    return VARCHAR;
+                }
+            }
+        }
+
+        // Default fallback - most InfluxDB values are numeric
+        return DOUBLE;
+    }
+
+    /**
+     * Infer the column kind based on the column name.
+     * This is used for dynamic column schema resolution in raw_query functions.
+     */
+    private ColumnKind inferColumnKind(String columnName) {
+        // Time column is always TIME kind
+        if (columnName.equals(TIME.getName())) {
+            return ColumnKind.TIME;
+        }
+
+        // For raw query results, most columns are computed fields (aggregations, etc.)
+        // so we default to FIELD kind
+        return ColumnKind.FIELD;
+    }
+
+    public InfluxClient getClient() {
+        return client;
     }
 }

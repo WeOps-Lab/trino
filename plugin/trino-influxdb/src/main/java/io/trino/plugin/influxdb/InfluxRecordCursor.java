@@ -76,6 +76,12 @@ public class InfluxRecordCursor
             List<Object> alignedRecord = Lists.newArrayListWithExpectedSize(names.size());
             for (String name : names) {
                 Integer index = nameIdxMap.get(name);
+
+                // If exact match not found, try to match aggregate function patterns
+                if (index == null) {
+                    index = findAggregateColumnIndex(name, nameIdxMap);
+                }
+
                 Object value = index != null ? record.get(index) : null;
                 alignedRecord.add(value);
             }
@@ -190,6 +196,41 @@ public class InfluxRecordCursor
     {
         Type actual = getType(field);
         checkArgument(expected.equals(actual), "Expected field %s to be type %s but is %s", field, expected, actual);
+    }
+
+    /**
+     * Try to find column index for aggregate functions when exact match is not found.
+     * This handles cases where aggregate functions like max(usage) don't have aliases
+     * and InfluxDB returns them with simplified names like "max".
+     */
+    private Integer findAggregateColumnIndex(String expectedName, Map<String, Integer> nameIdxMap)
+    {
+        // Handle aggregate function patterns like max(field), min(field), mean(field), etc.
+        if (expectedName.contains("(") && expectedName.contains(")")) {
+            // Extract function name from patterns like "max(usage)" -> "max"
+            String functionName = expectedName.substring(0, expectedName.indexOf('('));
+            Integer index = nameIdxMap.get(functionName);
+            if (index != null) {
+                return index;
+            }
+        }
+
+        // Try fuzzy matching for common patterns
+        for (Map.Entry<String, Integer> entry : nameIdxMap.entrySet()) {
+            String actualName = entry.getKey();
+
+            // Check if the actual name is a simplified version of the expected name
+            if (expectedName.startsWith(actualName + "(") ||
+                (actualName.equals("max") && expectedName.contains("max(")) ||
+                (actualName.equals("min") && expectedName.contains("min(")) ||
+                (actualName.equals("mean") && expectedName.contains("mean(")) ||
+                (actualName.equals("sum") && expectedName.contains("sum(")) ||
+                (actualName.equals("count") && expectedName.contains("count("))) {
+                return entry.getValue();
+            }
+        }
+
+        return null;
     }
 
     @Override
