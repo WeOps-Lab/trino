@@ -846,29 +846,137 @@ public class MongoSession
     private List<Document> guessTableFields(String schemaName, String tableName)
     {
         MongoDatabase db = client.getDatabase(schemaName);
-        // 需要从最新的数据开始
-        Document doc = db.getCollection(tableName).find().sort(new Document("_id", -1)).first();
-        if (doc == null) {
-            // no records at the collection
-            return ImmutableList.of();
+        MongoCollection<Document> collection = db.getCollection(tableName);
+
+        // 首先尝试从少量文档中采样字段，这样既高效又能覆盖大部分情况
+        Set<String> allFields = new LinkedHashSet<>();
+        Map<String, Object> fieldSamples = new HashMap<>();
+
+        // 策略1: 取最新的100个文档进行字段分析
+        try (MongoCursor<Document> cursor = collection.find()
+                .sort(new Document("_id", -1))
+                .limit(100)
+                .iterator()) {
+
+            while (cursor.hasNext()) {
+                Document doc = cursor.next();
+                for (String key : doc.keySet()) {
+                    allFields.add(key);
+                    // 保存第一个遇到的非null值作为样本
+                    if (!fieldSamples.containsKey(key) && doc.get(key) != null) {
+                        fieldSamples.put(key, doc.get(key));
+                    }
+                }
+            }
         }
 
+        // 策略2: 如果字段数量较少，再从随机位置采样一些文档
+        if (allFields.size() < 50) { // 只有在字段数量不多时才进行额外采样
+            long totalCount = collection.countDocuments();
+            if (totalCount > 100) {
+                // 随机采样一些文档位置
+                int[] samplePositions = {
+                    (int) (totalCount * 0.25),
+                    (int) (totalCount * 0.5),
+                    (int) (totalCount * 0.75)
+                };
+
+                for (int position : samplePositions) {
+                    try (MongoCursor<Document> cursor = collection.find()
+                            .skip(position)
+                            .limit(10)
+                            .iterator()) {
+
+                        while (cursor.hasNext()) {
+                            Document doc = cursor.next();
+                            for (String key : doc.keySet()) {
+                                allFields.add(key);
+                                if (!fieldSamples.containsKey(key) && doc.get(key) != null) {
+                                    fieldSamples.put(key, doc.get(key));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 如果采样方法没有找到字段，回退到聚合方法（但限制处理的文档数量）
+        if (allFields.isEmpty()) {
+            List<Document> pipeline = Arrays.asList(
+                new Document("$limit", 1000), // 限制处理的文档数量
+                new Document("$project", new Document("fields", new Document("$objectToArray", "$$ROOT"))),
+                new Document("$unwind", "$fields"),
+                new Document("$group", new Document("_id", "$fields.k")
+                    .append("sampleValue", new Document("$first", "$fields.v"))),
+                new Document("$sort", new Document("_id", 1))
+            );
+
+            try (MongoCursor<Document> cursor = collection.aggregate(pipeline).iterator()) {
+                while (cursor.hasNext()) {
+                    Document result = cursor.next();
+                    String fieldName = result.getString("_id");
+                    Object sampleValue = result.get("sampleValue");
+                    allFields.add(fieldName);
+                    if (sampleValue != null) {
+                        fieldSamples.put(fieldName, sampleValue);
+                    }
+                }
+            }
+        }
+
+        // 如果还是没有字段，使用原始的单文档方法
+        if (allFields.isEmpty()) {
+            Document doc = collection.find().sort(new Document("_id", -1)).first();
+            if (doc == null) {
+                return ImmutableList.of();
+            }
+
+            ImmutableList.Builder<Document> builder = ImmutableList.builder();
+            for (String key : doc.keySet()) {
+                Object value = doc.get(key);
+                Optional<TypeSignature> fieldType = guessFieldType(value);
+                if (fieldType.isPresent()) {
+                    Document metadata = new Document();
+                    metadata.append(FIELDS_NAME_KEY, key);
+                    metadata.append(FIELDS_TYPE_KEY, fieldType.get().toString());
+                    metadata.append(FIELDS_HIDDEN_KEY,
+                            key.equals("_id") && fieldType.get().equals(OBJECT_ID.getTypeSignature()));
+                    builder.add(metadata);
+                }
+            }
+            return builder.build();
+        }
+
+        // 构建字段元数据
         ImmutableList.Builder<Document> builder = ImmutableList.builder();
 
-        for (String key : doc.keySet()) {
-            Object value = doc.get(key);
-            Optional<TypeSignature> fieldType = guessFieldType(value);
+        for (String fieldName : allFields) {
+            Object sampleValue = fieldSamples.get(fieldName);
+
+            // 如果没有样本值，尝试查找一个
+            if (sampleValue == null) {
+                Document sample = collection.find(new Document(fieldName, new Document("$exists", true)))
+                        .limit(1)
+                        .first();
+                if (sample != null) {
+                    sampleValue = sample.get(fieldName);
+                }
+            }
+
+            Optional<TypeSignature> fieldType = guessFieldType(sampleValue);
             if (fieldType.isPresent()) {
                 Document metadata = new Document();
-                metadata.append(FIELDS_NAME_KEY, key);
+                metadata.append(FIELDS_NAME_KEY, fieldName);
                 metadata.append(FIELDS_TYPE_KEY, fieldType.get().toString());
                 metadata.append(FIELDS_HIDDEN_KEY,
-                        key.equals("_id") && fieldType.get().equals(OBJECT_ID.getTypeSignature()));
+                        fieldName.equals("_id") && fieldType.get().equals(OBJECT_ID.getTypeSignature()));
 
                 builder.add(metadata);
             }
             else {
-                log.debug("Unable to guess field type from %s : %s", value == null ? "null" : value.getClass().getName(), value);
+                log.debug("Unable to guess field type for field: %s, sample value: %s",
+                    fieldName, sampleValue == null ? "null" : sampleValue.getClass().getName());
             }
         }
 
