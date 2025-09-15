@@ -17,7 +17,7 @@ RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
 RUN sed -i s@/security.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
 RUN apt-get update
 RUN apt-get install -y git gcc make
-RUN git clone https://github.etherfurnace.cn/https://github.com/airlift/jvmkill.git /tmp/jvmkill
+RUN git clone https://github.com/airlift/jvmkill.git /tmp/jvmkill
 RUN make -C /tmp/jvmkill
 
 FROM eclipse-temurin:17.0.6_10-jdk-focal
