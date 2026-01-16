@@ -232,6 +232,13 @@ public class InfluxMetadata
                 org.influxdb.dto.Query influxQuery = new org.influxdb.dto.Query(query, schema);
                 InfluxRecord queryResult = client.query(influxQuery);
 
+                // Handle empty result case - return default time column for valid schema
+                if (queryResult.getColumns().isEmpty()) {
+                    List<ColumnHandle> columnHandles = ImmutableList.of(
+                            new InfluxColumnHandle(TIME.getName(), TIMESTAMP_NANOS, ColumnKind.TIME));
+                    return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+                }
+
                 // Create column handles based on actual query result columns
                 List<ColumnHandle> columnHandles = queryResult.getColumns().stream()
                         .map(columnName -> new InfluxColumnHandle(columnName, inferColumnType(columnName, queryResult), inferColumnKind(columnName)))

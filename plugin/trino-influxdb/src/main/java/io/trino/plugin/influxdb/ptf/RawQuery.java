@@ -213,6 +213,25 @@ public class RawQuery
                 org.influxdb.dto.Query influxQuery = new org.influxdb.dto.Query(query, schema);
                 InfluxRecord queryResult = metadata.getClient().query(influxQuery);
 
+                // Handle empty result case - when metric has no data
+                if (queryResult.getColumns().isEmpty()) {
+                    // Return empty result with a default time column to maintain valid schema
+                    List<ColumnHandle> columns = ImmutableList.of(
+                            new InfluxColumnHandle(TIME.getName(), TIMESTAMP_NANOS, ColumnKind.TIME));
+
+                    Descriptor returnedType = new Descriptor(columns.stream()
+                            .map(InfluxColumnHandle.class::cast)
+                            .map(column -> new Descriptor.Field(column.getName(), Optional.of(column.getType())))
+                            .collect(toList()));
+
+                    RawQueryFunctionHandle handle = new RawQueryFunctionHandle(tableHandle);
+
+                    return TableFunctionAnalysis.builder()
+                            .returnedType(returnedType)
+                            .handle(handle)
+                            .build();
+                }
+
                 // Create column handles based on actual query result columns
                 List<ColumnHandle> columns = queryResult.getColumns().stream()
                         .map(columnName -> new InfluxColumnHandle(columnName, inferColumnType(columnName, queryResult), inferColumnKind(columnName)))
