@@ -220,54 +220,47 @@ public class InfluxMetadata
         }
 
         ConnectorTableHandle tableHandle = ((RawQueryFunctionHandle) handle).getTableHandle();
-        InfluxTableHandle influxTableHandle = (InfluxTableHandle) tableHandle;
+        List<ColumnHandle> columnHandles = resolveTableFunctionColumns(session, (InfluxTableHandle) tableHandle);
+        return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+    }
 
-        // If the table handle has a custom query, we need to execute it to get the actual column schema
-        if (influxTableHandle.getQuery().isPresent()) {
-            String query = influxTableHandle.getQuery().get();
-            String schema = influxTableHandle.getSchemaName();
-
-            try {
-                // Execute the query to get actual result columns
-                org.influxdb.dto.Query influxQuery = new org.influxdb.dto.Query(query, schema);
-                InfluxRecord queryResult = client.query(influxQuery);
-
-                // Handle empty result case - return default time column for valid schema
-                if (queryResult.getColumns().isEmpty()) {
-                    List<ColumnHandle> columnHandles = ImmutableList.of(
-                            new InfluxColumnHandle(TIME.getName(), TIMESTAMP_NANOS, ColumnKind.TIME));
-                    return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
-                }
-
-                // Create column handles based on actual query result columns
-                List<ColumnHandle> columnHandles = queryResult.getColumns().stream()
-                        .map(columnName -> new InfluxColumnHandle(columnName, inferColumnType(columnName, queryResult), inferColumnKind(columnName)))
-                        .map(ColumnHandle.class::cast)
-                        .collect(toImmutableList());
-
-                return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
-            } catch (Exception e) {
-                // Fallback to original behavior if query execution fails
-                ConnectorTableSchema tableSchema = getTableSchema(session, tableHandle);
-                Map<String, ColumnHandle> columnHandlesByName = getColumnHandles(session, tableHandle);
-                List<ColumnHandle> columnHandles = tableSchema.getColumns().stream()
-                        .map(ColumnSchema::getName)
-                        .map(columnHandlesByName::get)
-                        .collect(toImmutableList());
-
-                return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
-            }
-        } else {
-            // Use original behavior for non-custom queries
-            ConnectorTableSchema tableSchema = getTableSchema(session, tableHandle);
-            Map<String, ColumnHandle> columnHandlesByName = getColumnHandles(session, tableHandle);
-            List<ColumnHandle> columnHandles = tableSchema.getColumns().stream()
-                    .map(ColumnSchema::getName)
-                    .map(columnHandlesByName::get)
-                    .collect(toImmutableList());
-
-            return Optional.of(new TableFunctionApplicationResult<>(tableHandle, columnHandles));
+    public List<ColumnHandle> resolveTableFunctionColumns(ConnectorSession session, InfluxTableHandle tableHandle) {
+        if (tableHandle.getQuery().isEmpty()) {
+            return getTableFunctionColumns(session, tableHandle);
         }
+
+        String query = tableHandle.getQuery().orElseThrow();
+        String schema = tableHandle.getSchemaName();
+
+        try {
+            org.influxdb.dto.Query influxQuery = new org.influxdb.dto.Query(query, schema);
+            InfluxRecord queryResult = client.query(influxQuery);
+
+            if (queryResult.getColumns().isEmpty()) {
+                return defaultEmptyQueryColumns();
+            }
+
+            return queryResult.getColumns().stream()
+                    .map(columnName -> new InfluxColumnHandle(columnName, inferColumnType(columnName, queryResult), inferColumnKind(columnName)))
+                    .map(ColumnHandle.class::cast)
+                    .collect(toImmutableList());
+        }
+        catch (Exception e) {
+            return getTableFunctionColumns(session, tableHandle);
+        }
+    }
+
+    private List<ColumnHandle> getTableFunctionColumns(ConnectorSession session, ConnectorTableHandle tableHandle) {
+        ConnectorTableSchema tableSchema = getTableSchema(session, tableHandle);
+        Map<String, ColumnHandle> columnHandlesByName = getColumnHandles(session, tableHandle);
+        return tableSchema.getColumns().stream()
+                .map(ColumnSchema::getName)
+                .map(columnHandlesByName::get)
+                .collect(toImmutableList());
+    }
+
+    private List<ColumnHandle> defaultEmptyQueryColumns() {
+        return ImmutableList.of(new InfluxColumnHandle(TIME.getName(), TIMESTAMP_NANOS, ColumnKind.TIME));
     }
 
     private Optional<ConnectorTableMetadata> getTableMetadata(SchemaTableName schemaTableName) {
