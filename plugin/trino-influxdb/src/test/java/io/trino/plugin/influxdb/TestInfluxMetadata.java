@@ -200,4 +200,5 @@ public class TestInfluxMetadata
         assertEquals(metadata.streamTableColumns(SESSION, new SchemaTablePrefix("unknown", "unknown")),
                 ImmutableMap.of().entrySet().stream().iterator());
     }
+
 }

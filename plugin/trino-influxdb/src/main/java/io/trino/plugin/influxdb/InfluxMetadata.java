@@ -31,11 +31,15 @@ import com.google.inject.Inject;
 
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.plugin.influxdb.TypeUtils.isPushdownSupportedType;
@@ -54,6 +58,9 @@ import static java.util.Objects.requireNonNull;
 
 public class InfluxMetadata
         implements ConnectorMetadata {
+    private static final Pattern SELECT_LIST_PATTERN = Pattern.compile("(?is)\\bselect\\b(.*?)\\bfrom\\b");
+    private static final Pattern GROUP_BY_PATTERN = Pattern.compile("(?is)\\bgroup\\s+by\\b(.*?)(?:\\border\\s+by\\b|\\blimit\\b|\\boffset\\b|\\bslimit\\b|\\bsoffset\\b|\\bfill\\b|\\btz\\b|;|$)");
+    private static final Pattern FUNCTION_PREFIX_PATTERN = Pattern.compile("^([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(");
     private final InfluxClient client;
 
     @Inject
@@ -237,6 +244,10 @@ public class InfluxMetadata
             InfluxRecord queryResult = client.query(influxQuery);
 
             if (queryResult.getColumns().isEmpty()) {
+                List<ColumnHandle> inferredColumns = inferColumnsFromInfluxQl(session, tableHandle, query);
+                if (!inferredColumns.isEmpty()) {
+                    return inferredColumns;
+                }
                 return defaultEmptyQueryColumns();
             }
 
@@ -246,8 +257,54 @@ public class InfluxMetadata
                     .collect(toImmutableList());
         }
         catch (Exception e) {
+            List<ColumnHandle> inferredColumns = inferColumnsFromInfluxQl(session, tableHandle, query);
+            if (!inferredColumns.isEmpty()) {
+                return inferredColumns;
+            }
             return getTableFunctionColumns(session, tableHandle);
         }
+    }
+
+    private List<ColumnHandle> inferColumnsFromInfluxQl(ConnectorSession session, InfluxTableHandle tableHandle, String query)
+    {
+        Map<String, InfluxColumnHandle> baseColumnsByName = getBaseColumnsByName(session, tableHandle);
+        List<SelectItem> selectItems = parseSelectItems(query);
+        List<String> groupByItems = parseGroupByItems(query);
+
+        if (selectItems.isEmpty() && groupByItems.isEmpty()) {
+            return ImmutableList.of();
+        }
+
+        Map<String, ColumnHandle> resolvedColumns = new LinkedHashMap<>();
+        addResolvedColumn(resolvedColumns, new InfluxColumnHandle(TIME.getName(), TIMESTAMP_NANOS, ColumnKind.TIME));
+
+        for (SelectItem selectItem : selectItems) {
+            InfluxColumnHandle baseColumn = baseColumnsByName.get(selectItem.normalizedExpression().toLowerCase(Locale.ENGLISH));
+            InfluxColumnHandle column = buildSelectColumn(selectItem, baseColumn);
+            if (!column.getName().equalsIgnoreCase(TIME.getName())) {
+                addResolvedColumn(resolvedColumns, column);
+            }
+        }
+
+        for (String groupByItem : groupByItems) {
+            if (isTimeExpression(groupByItem)) {
+                continue;
+            }
+            String normalizedGroupByItem = normalizeIdentifier(groupByItem);
+            if (normalizedGroupByItem.isEmpty()) {
+                continue;
+            }
+
+            InfluxColumnHandle baseColumn = baseColumnsByName.get(normalizedGroupByItem.toLowerCase(Locale.ENGLISH));
+            if (baseColumn != null) {
+                addResolvedColumn(resolvedColumns, baseColumn);
+                continue;
+            }
+
+            addResolvedColumn(resolvedColumns, new InfluxColumnHandle(normalizedGroupByItem, VARCHAR, ColumnKind.TAG));
+        }
+
+        return ImmutableList.copyOf(resolvedColumns.values());
     }
 
     private List<ColumnHandle> getTableFunctionColumns(ConnectorSession session, ConnectorTableHandle tableHandle) {
@@ -262,6 +319,246 @@ public class InfluxMetadata
     private List<ColumnHandle> defaultEmptyQueryColumns() {
         return ImmutableList.of(new InfluxColumnHandle(TIME.getName(), TIMESTAMP_NANOS, ColumnKind.TIME));
     }
+
+    private Map<String, InfluxColumnHandle> getBaseColumnsByName(ConnectorSession session, InfluxTableHandle tableHandle)
+    {
+        try {
+            return getTableFunctionColumns(session, tableHandle).stream()
+                    .map(InfluxColumnHandle.class::cast)
+                    .collect(ImmutableMap.toImmutableMap(
+                            column -> column.getName().toLowerCase(Locale.ENGLISH),
+                            column -> column,
+                            (left, right) -> left));
+        }
+        catch (RuntimeException ignored) {
+            return ImmutableMap.of();
+        }
+    }
+
+    private List<SelectItem> parseSelectItems(String query)
+    {
+        Matcher matcher = SELECT_LIST_PATTERN.matcher(query);
+        if (!matcher.find()) {
+            return ImmutableList.of();
+        }
+
+        return splitTopLevelComma(matcher.group(1)).stream()
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .map(this::parseSelectItem)
+                .collect(toImmutableList());
+    }
+
+    private SelectItem parseSelectItem(String item)
+    {
+        int aliasStart = findTopLevelAlias(item);
+        if (aliasStart >= 0) {
+            AliasParts aliasParts = splitAlias(item, aliasStart);
+            String expression = aliasParts.expression();
+            String alias = normalizeIdentifier(aliasParts.alias());
+            return new SelectItem(expression, alias.isEmpty() ? normalizeIdentifier(expression) : alias);
+        }
+        return new SelectItem(item, normalizeIdentifier(item));
+    }
+
+    private List<String> parseGroupByItems(String query)
+    {
+        Matcher matcher = GROUP_BY_PATTERN.matcher(query);
+        if (!matcher.find()) {
+            return ImmutableList.of();
+        }
+
+        return splitTopLevelComma(matcher.group(1)).stream()
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .collect(toImmutableList());
+    }
+
+    private List<String> splitTopLevelComma(String input)
+    {
+        ImmutableList.Builder<String> parts = ImmutableList.builder();
+        StringBuilder current = new StringBuilder();
+        int parenthesesDepth = 0;
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+
+        for (int i = 0; i < input.length(); i++) {
+            char currentChar = input.charAt(i);
+            if (currentChar == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+            }
+            else if (currentChar == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+            }
+            else if (!inSingleQuote && !inDoubleQuote) {
+                if (currentChar == '(') {
+                    parenthesesDepth++;
+                }
+                else if (currentChar == ')') {
+                    parenthesesDepth = Math.max(0, parenthesesDepth - 1);
+                }
+                else if (currentChar == ',' && parenthesesDepth == 0) {
+                    parts.add(current.toString());
+                    current = new StringBuilder();
+                    continue;
+                }
+            }
+            current.append(currentChar);
+        }
+
+        parts.add(current.toString());
+        return parts.build();
+    }
+
+    private int findTopLevelAlias(String item)
+    {
+        int parenthesesDepth = 0;
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+
+        for (int i = 0; i < item.length(); i++) {
+            char currentChar = item.charAt(i);
+            if (currentChar == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+            }
+            else if (currentChar == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+            }
+            else if (!inSingleQuote && !inDoubleQuote) {
+                if (currentChar == '(') {
+                    parenthesesDepth++;
+                }
+                else if (currentChar == ')') {
+                    parenthesesDepth = Math.max(0, parenthesesDepth - 1);
+                }
+                else if (parenthesesDepth == 0 && startsWithAsToken(item, i)) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private InfluxColumnHandle buildSelectColumn(SelectItem selectItem, InfluxColumnHandle baseColumn)
+    {
+        String normalizedExpression = selectItem.normalizedExpression();
+        if (selectItem.columnName().equalsIgnoreCase(TIME.getName()) || isTimeExpression(normalizedExpression)) {
+            return new InfluxColumnHandle(TIME.getName(), TIMESTAMP_NANOS, ColumnKind.TIME);
+        }
+
+        if (baseColumn != null && selectItem.columnName().equalsIgnoreCase(normalizedExpression)) {
+            return baseColumn;
+        }
+
+        return new InfluxColumnHandle(
+                selectItem.columnName(),
+                inferQueryColumnType(selectItem.expression(), baseColumn),
+                inferQueryColumnKind(selectItem.expression(), baseColumn));
+    }
+
+    private Type inferQueryColumnType(String expression, InfluxColumnHandle baseColumn)
+    {
+        if (baseColumn != null) {
+            return baseColumn.getType();
+        }
+
+        String normalizedExpression = normalizeIdentifier(expression).toLowerCase(Locale.ENGLISH);
+        if (extractFunctionName(normalizedExpression).filter("count"::equals).isPresent()) {
+            return BIGINT;
+        }
+        if (isTimeExpression(expression)) {
+            return TIMESTAMP_NANOS;
+        }
+        return DOUBLE;
+    }
+
+    private ColumnKind inferQueryColumnKind(String expression, InfluxColumnHandle baseColumn)
+    {
+        if (baseColumn != null) {
+            return baseColumn.getKind();
+        }
+        if (isTimeExpression(expression)) {
+            return ColumnKind.TIME;
+        }
+        return ColumnKind.FIELD;
+    }
+
+    private boolean isTimeExpression(String expression)
+    {
+        String normalizedExpression = normalizeIdentifier(expression).toLowerCase(Locale.ENGLISH);
+        return normalizedExpression.equals(TIME.getName()) || extractFunctionName(normalizedExpression).filter(TIME.getName()::equals).isPresent();
+    }
+
+    private static String normalizeIdentifier(String identifier)
+    {
+        String normalized = identifier.trim();
+        if (normalized.endsWith(";")) {
+            normalized = normalized.substring(0, normalized.length() - 1).trim();
+        }
+        if (normalized.startsWith("\"") && normalized.endsWith("\"") && normalized.length() >= 2) {
+            normalized = normalized.substring(1, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private void addResolvedColumn(Map<String, ColumnHandle> resolvedColumns, InfluxColumnHandle column)
+    {
+        resolvedColumns.putIfAbsent(column.getName().toLowerCase(Locale.ENGLISH), column);
+    }
+
+    private static boolean startsWithAsToken(String value, int start)
+    {
+        if (start < 0 || start >= value.length()) {
+            return false;
+        }
+        if (value.charAt(start) != 'a' && value.charAt(start) != 'A') {
+            return false;
+        }
+
+        int nextToken = skipWhitespace(value, start + 1);
+        if (nextToken >= value.length() || (value.charAt(nextToken) != 's' && value.charAt(nextToken) != 'S')) {
+            return false;
+        }
+
+        int aliasStart = skipWhitespace(value, nextToken + 1);
+        return aliasStart < value.length();
+    }
+
+    private static AliasParts splitAlias(String value, int aliasTokenStart)
+    {
+        int aIndex = skipWhitespace(value, aliasTokenStart);
+        int sIndex = skipWhitespace(value, aIndex + 1);
+        int aliasStart = skipWhitespace(value, sIndex + 1);
+        return new AliasParts(value.substring(0, aliasTokenStart).trim(), value.substring(aliasStart));
+    }
+
+    private static int skipWhitespace(String value, int start)
+    {
+        int index = start;
+        while (index < value.length() && Character.isWhitespace(value.charAt(index))) {
+            index++;
+        }
+        return index;
+    }
+
+    private static Optional<String> extractFunctionName(String expression)
+    {
+        Matcher matcher = FUNCTION_PREFIX_PATTERN.matcher(expression);
+        if (matcher.find()) {
+            return Optional.of(matcher.group(1).toLowerCase(Locale.ENGLISH));
+        }
+        return Optional.empty();
+    }
+
+    private record SelectItem(String expression, String columnName)
+    {
+        private String normalizedExpression()
+        {
+            return normalizeIdentifier(expression);
+        }
+    }
+
+    private record AliasParts(String expression, String alias) {}
 
     private Optional<ConnectorTableMetadata> getTableMetadata(SchemaTableName schemaTableName) {
         Optional<InfluxTableHandle> tableHandle = client.getTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName());
